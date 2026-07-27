@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+
+# Extraction output. Game data never belongs in this repo — it stays in the
+# user's own copy of the game.
+#
+# These are directory-scoped on purpose. Do NOT add bare extension globs like
+# *.MD or *.MP here: Windows matches ignore patterns case-insensitively, so
+# *.MD silently swallows every .md document in docs/.
+/unpacked/
+/out/
+/extracted/
+/dump/
