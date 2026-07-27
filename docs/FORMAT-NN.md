@@ -326,8 +326,10 @@ of the file and match to two decimal places.
 
 ## Still open
 
-- **Materials**, and with them the exact mesh-to-texture binding. Located but
-  **variable in size**, unlike everything else here.
+- **Materials**, and with them the exact mesh-to-texture binding. See the
+  post-mortem below — three data-driven approaches have failed and the next
+  attempt should go at the binary. Located but **variable in size**, unlike
+  everything else here.
   The material pointer's `fType` differs per material (`0x10000000`,
   `0x30000000`) and the gaps between consecutive descriptors vary — 196 and 200
   bytes within a single model — so the layout is flag-driven, with optional
@@ -345,6 +347,36 @@ of the file and match to two decimal places.
 Episode I's `NNS_OBJECT.Read`, reached from `amObjectSetup`
 (`AppMain/Am/AmObject.cs:5`), remains the oracle for traversal order — with the
 caveat that its struct *sizes* cannot be trusted.
+
+## Materials — post-mortem on three failed approaches
+
+Recorded so nobody repeats them. Every other structure in this format yielded to
+measurement; materials have not.
+
+**1. Measure the stride, as with mesh sets and nodes.** Failed: there is no
+stride. Descriptor gaps vary *within a single model* — 196 and 200 bytes in
+`Z1_G_HASIRA_B.ZNO`.
+
+**2. Use the subobject texture list to sidestep materials entirely.** Partially
+useful but insufficient. A subobject does list `s32` indices into `NZTL`, but
+`Z1_G_HASIRA_B.ZNO` has 3 materials against 2 textures with mesh sets referencing
+materials 1, 2 and 0 — so the selector genuinely lives in the material.
+
+**3. Correlate a flag word against size.** The pointer's `fType` looked
+promising: `0x30000000` descriptors are consistently **exactly 4 bytes larger**
+than `0x10000000` ones (120/124, 196/200, 260/264, 184/188), so that flag adds one
+field. But the material's own leading `u32` does not determine the remaining
+size — across 1,982 sampled materials, only 88 map to a unique size.
+
+**The flaw underneath all three:** gap-to-next-descriptor is being treated as the
+material's size, and it is not. Materials are individually referenced blobs and
+other structures interleave between them, so the gap is an upper bound at best.
+Every size-based inference built on it is unsound.
+
+**What to do instead.** Go at the binary with rizin. Find the routine that reads a
+material — reachable from the object-loading path — and read the field layout out
+of the code. The data cannot settle this on its own, which is a different
+situation from every other struct here.
 
 ## Usage
 
