@@ -1,0 +1,466 @@
+{
+ "10": {
+  "name": "Halogen",
+  "direct": false
+ },
+ "55": {
+  "name": "FinalBoss12",
+  "direct": false
+ },
+ "63": {
+  "name": "Speed",
+  "direct": false
+ },
+ "64": {
+  "name": "Speed",
+  "direct": false
+ },
+ "65": {
+  "name": "Speed",
+  "direct": false
+ },
+ "66": {
+  "name": "Speed",
+  "direct": false
+ },
+ "67": {
+  "name": "Speed",
+  "direct": false
+ },
+ "100": {
+  "name": "B_Piller_D01",
+  "direct": false
+ },
+ "115": {
+  "name": "BigRock4",
+  "direct": false
+ },
+ "119": {
+  "name": "Breathe",
+  "direct": false
+ },
+ "120": {
+  "name": "Breathe",
+  "direct": false
+ },
+ "121": {
+  "name": "Breathe",
+  "direct": false
+ },
+ "122": {
+  "name": "BigRock3",
+  "direct": false
+ },
+ "132": {
+  "name": "WaterSlider",
+  "direct": true
+ },
+ "133": {
+  "name": "WaterSlider",
+  "direct": true
+ },
+ "134": {
+  "name": "WaterSlider",
+  "direct": true
+ },
+ "135": {
+  "name": "WaterSlider",
+  "direct": true
+ },
+ "136": {
+  "name": "WaterSlider",
+  "direct": true
+ },
+ "137": {
+  "name": "WaterSlider",
+  "direct": true
+ },
+ "138": {
+  "name": "WaterSlider",
+  "direct": true
+ },
+ "139": {
+  "name": "WaterSlider",
+  "direct": true
+ },
+ "145": {
+  "name": "MS_Spin",
+  "direct": false
+ },
+ "163": {
+  "name": "MS_Spin",
+  "direct": false
+ },
+ "179": {
+  "name": "Spear",
+  "direct": false
+ },
+ "180": {
+  "name": "Spear",
+  "direct": false
+ },
+ "181": {
+  "name": "Spear",
+  "direct": false
+ },
+ "182": {
+  "name": "Gear",
+  "direct": true
+ },
+ "183": {
+  "name": "Gear",
+  "direct": true
+ },
+ "185": {
+  "name": "Gear",
+  "direct": true
+ },
+ "186": {
+  "name": "MS_Spin",
+  "direct": false
+ },
+ "187": {
+  "name": "MS_Spin",
+  "direct": false
+ },
+ "194": {
+  "name": "Special5",
+  "direct": false
+ },
+ "195": {
+  "name": "Special5",
+  "direct": false
+ },
+ "197": {
+  "name": "Special3",
+  "direct": true
+ },
+ "198": {
+  "name": "Special4",
+  "direct": true
+ },
+ "199": {
+  "name": "Special5",
+  "direct": true
+ },
+ "200": {
+  "name": "Special6",
+  "direct": true
+ },
+ "213": {
+  "name": "Casino3",
+  "direct": false
+ },
+ "214": {
+  "name": "Casino3",
+  "direct": false
+ },
+ "215": {
+  "name": "Casino3",
+  "direct": false
+ },
+ "248": {
+  "name": "Switch",
+  "direct": false
+ },
+ "249": {
+  "name": "Boss3_01",
+  "direct": false
+ },
+ "250": {
+  "name": "Boss3_01",
+  "direct": false
+ },
+ "251": {
+  "name": "Boss3_01",
+  "direct": false
+ },
+ "252": {
+  "name": "Boss3_01",
+  "direct": false
+ },
+ "253": {
+  "name": "Boss3_01",
+  "direct": false
+ },
+ "254": {
+  "name": "Boss3_01",
+  "direct": false
+ },
+ "255": {
+  "name": "Boss3_01",
+  "direct": false
+ },
+ "256": {
+  "name": "Boss3_01",
+  "direct": false
+ },
+ "257": {
+  "name": "Boss3_01",
+  "direct": false
+ },
+ "258": {
+  "name": "Boss3_01",
+  "direct": false
+ },
+ "259": {
+  "name": "Boss3_01",
+  "direct": false
+ },
+ "260": {
+  "name": "Boss3_01",
+  "direct": false
+ },
+ "264": {
+  "name": "Boss2_06",
+  "direct": false
+ },
+ "265": {
+  "name": "Lorry",
+  "direct": false
+ },
+ "266": {
+  "name": "Lorry",
+  "direct": false
+ },
+ "267": {
+  "name": "Lorry",
+  "direct": false
+ },
+ "268": {
+  "name": "Lorry",
+  "direct": false
+ },
+ "295": {
+  "name": "Spring",
+  "direct": false
+ },
+ "303": {
+  "name": "Cards1",
+  "direct": false
+ },
+ "304": {
+  "name": "Cards1",
+  "direct": false
+ },
+ "305": {
+  "name": "MS_Homing",
+  "direct": false
+ },
+ "306": {
+  "name": "MS_Homing",
+  "direct": false
+ },
+ "312": {
+  "name": "CandleStick",
+  "direct": true
+ },
+ "318": {
+  "name": "MS_Homing",
+  "direct": false
+ },
+ "319": {
+  "name": "MS_Homing",
+  "direct": false
+ },
+ "352": {
+  "name": "FinalBoss12",
+  "direct": false
+ },
+ "354": {
+  "name": "Boss0_01",
+  "direct": false
+ },
+ "359": {
+  "name": "Boss2_06",
+  "direct": true
+ },
+ "368": {
+  "name": "Warning",
+  "direct": true
+ },
+ "369": {
+  "name": "Cards1",
+  "direct": false
+ },
+ "370": {
+  "name": "Cards4",
+  "direct": true
+ },
+ "371": {
+  "name": "BigRock4",
+  "direct": false
+ },
+ "375": {
+  "name": "Special1",
+  "direct": false
+ },
+ "378": {
+  "name": "BigRock4",
+  "direct": false
+ },
+ "387": {
+  "name": "Uri01",
+  "direct": false
+ },
+ "388": {
+  "name": "Uri01",
+  "direct": false
+ },
+ "392": {
+  "name": "SandWorm01",
+  "direct": false
+ },
+ "453": {
+  "name": "Speed",
+  "direct": false
+ },
+ "454": {
+  "name": "Speed",
+  "direct": false
+ },
+ "455": {
+  "name": "Speed",
+  "direct": false
+ },
+ "456": {
+  "name": "Speed",
+  "direct": false
+ },
+ "457": {
+  "name": "Speed",
+  "direct": false
+ },
+ "458": {
+  "name": "Speed",
+  "direct": false
+ },
+ "459": {
+  "name": "Speed",
+  "direct": false
+ },
+ "460": {
+  "name": "Speed",
+  "direct": false
+ },
+ "461": {
+  "name": "Speed",
+  "direct": false
+ },
+ "462": {
+  "name": "Speed",
+  "direct": false
+ },
+ "465": {
+  "name": "B_Piller_D01",
+  "direct": false
+ },
+ "474": {
+  "name": "B_Piller_D01",
+  "direct": false
+ },
+ "566": {
+  "name": "Speed",
+  "direct": false
+ },
+ "567": {
+  "name": "Speed",
+  "direct": false
+ },
+ "570": {
+  "name": "Burner01",
+  "direct": false
+ },
+ "571": {
+  "name": "Burner01",
+  "direct": false
+ },
+ "572": {
+  "name": "Burner01",
+  "direct": false
+ },
+ "576": {
+  "name": "Propeller01",
+  "direct": true
+ },
+ "608": {
+  "name": "Avalanche02",
+  "direct": false
+ },
+ "609": {
+  "name": "Avalanche02",
+  "direct": false
+ },
+ "610": {
+  "name": "Avalanche02",
+  "direct": false
+ },
+ "627": {
+  "name": "Avalanche02",
+  "direct": false
+ },
+ "628": {
+  "name": "Uri01",
+  "direct": false
+ },
+ "653": {
+  "name": "SandBranch03",
+  "direct": true
+ },
+ "675": {
+  "name": "SandTrank01",
+  "direct": false
+ },
+ "733": {
+  "name": "MetalUnit03",
+  "direct": false
+ },
+ "735": {
+  "name": "Scara01",
+  "direct": false
+ },
+ "736": {
+  "name": "Snow01",
+  "direct": false
+ },
+ "738": {
+  "name": "e2_Boss1_01",
+  "direct": true
+ },
+ "745": {
+  "name": "e2_Boss3_21",
+  "direct": false
+ },
+ "765": {
+  "name": "Jetwall04",
+  "direct": true
+ },
+ "776": {
+  "name": "Special1",
+  "direct": false
+ },
+ "782": {
+  "name": "e2_Boss3_23",
+  "direct": false
+ },
+ "786": {
+  "name": "Avalanche01",
+  "direct": true
+ },
+ "787": {
+  "name": "SnowWall01",
+  "direct": false
+ },
+ "788": {
+  "name": "SnowWall01",
+  "direct": true
+ },
+ "789": {
+  "name": "SnowWall01",
+  "direct": true
+ },
+ "790": {
+  "name": "OilRoad01",
+  "direct": true
+ }
+}

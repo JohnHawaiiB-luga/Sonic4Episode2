@@ -25,8 +25,13 @@ public sealed class GameEngine
     public const int SceneGroup = 1;
 
     /// <summary>Task priorities, low to high, matching the engine's own ordering.</summary>
+    /// <remarks>
+    /// <see cref="PriorityObject"/> is the engine's real value, read from the
+    /// argument its spawn handlers pass to the shared object constructor. The map
+    /// and camera priorities are still placeholders either side of it.
+    /// </remarks>
     public const int PriorityMap = 0x1000;
-    public const int PriorityObject = 0x2000;
+    public const int PriorityObject = ObjectCatalog.Priority;
     public const int PriorityCamera = 0x3000;
 
     private readonly string _gameRoot;
@@ -137,8 +142,10 @@ public sealed class GameEngine
         Stage = batch;
         Placements = placements;
         StageName = Path.GetFileNameWithoutExtension(actPath);
+        int identified = placements.Count(p => ObjectCatalog.IsKnown(p.ObjectId));
         Status = $"{assembler.TilesPlaced} tiles, {batch.VertexCount:N0} vertices, " +
-                 $"{batch.TriangleCount:N0} triangles, {placements.Count} placements" +
+                 $"{batch.TriangleCount:N0} triangles, " +
+                 $"{identified}/{placements.Count} placements identified" +
                  (Collision?.HasShapes == true ? ", height fields" : ", blocky collision");
 
         // The map is a task like anything else, so it obeys pause levels and is

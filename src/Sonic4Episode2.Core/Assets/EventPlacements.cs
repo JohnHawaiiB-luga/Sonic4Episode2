@@ -16,10 +16,10 @@ namespace Sonic4Episode2.Core.Assets;
 /// all 65 <c>.EV</c> files in the build parse.
 /// </para>
 /// <para>
-/// <b>What the object ids mean is still unknown.</b> The game holds roughly 298
-/// object names as immediates inside each object's own code rather than in a
-/// lookup table, so mapping id 724 to "ring" needs disassembly. Until then a
-/// placement is a position and a number.
+/// The record layout is confirmed by the engine's own spawn functions, which read
+/// the id from <c>[record+2]</c> and the flags from <c>[record+4]</c>, the latter
+/// as a bitfield — one handler at <c>0x004A75ED</c> takes bits 4-5 and 6-7 as two
+/// separate 2-bit fields. See <see cref="ObjectCatalog"/> for what the ids mean.
 /// </para>
 /// </remarks>
 public sealed class EventPlacements
@@ -79,5 +79,10 @@ public sealed class EventPlacements
 /// <summary>One placed object.</summary>
 /// <param name="X">Absolute pixel position.</param>
 /// <param name="Y">Absolute pixel position, growing downward as the grid does.</param>
-/// <param name="ObjectId">Which object; the id-to-name table is not recovered.</param>
-public readonly record struct Placement(int X, int Y, int ObjectId, int Flags, int Parameter);
+/// <param name="ObjectId">Which object; resolve it through <see cref="ObjectCatalog"/>.</param>
+/// <param name="Flags">Bitfield; spawn handlers read 2-bit variant selectors out of it.</param>
+public readonly record struct Placement(int X, int Y, int ObjectId, int Flags, int Parameter)
+{
+    /// <summary>What this placement is, as far as the catalog knows.</summary>
+    public string Describe() => ObjectCatalog.Describe(ObjectId);
+}
