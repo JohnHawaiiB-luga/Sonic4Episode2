@@ -112,11 +112,11 @@ task count, and are deliberately pessimistic.
 | Phase | Weight | Done | Contribution |
 |-------|-------:|-----:|-------------:|
 | 1. Asset formats | 12% | ~80% | 9.6% |
-| 2. Geometry, audio, shaders | 18% | ~65% | 11.7% |
+| 2. Geometry, audio, shaders | 18% | ~70% | 12.6% |
 | 3. Engine port | 20% | 0% | 0% |
 | 4. Game logic | 35% | 0% | 0% |
-| 5. Mobile targets | 15% | 0% | 0% |
-| **Total** | | | **≈ 22%** |
+| 5. Mobile targets | 15% | ~3% | 0.5% |
+| **Total** | | | **≈ 23%** |
 
 **Runnable code: 0%.** Nothing in this repository executes the game on any
 platform. That number moves off zero in phase 3, not before.
@@ -158,10 +158,11 @@ Gate: every byte of every archive is accounted for by a decoder or an explicit
 - [ ] `.DDS` textures — standard, but confirm the DXT variants in use
 - [x] `.PSH` / `.VSH` identified — 922 `ps_3_0` + 921 `vs_3_0`, compiled D3D9
       bytecode with `CTAB` constant tables
-- [ ] Spike: run one through **MojoShader** and confirm usable GLSL ES output.
-      This is FNA's existing shader path, so translation should be off the shelf
-      rather than a re-authoring effort — but the mobile target depends on it, so
-      prove it early rather than assuming it
+- [x] **Shader translatability established.** All 1,843 parse cleanly as
+      well-formed SM3.0 with `CTAB`, using only documented SM1-3 opcodes — the
+      exact input MojoShader consumes. `docs/FORMAT-SHADER.md`, `tools/shader.py`
+- [ ] Actually run one through MojoShader end to end and inspect the GLSL ES.
+      Remaining risk is output quality and ES 2.0 fallbacks, not feasibility
 - [ ] `SOUND/` — identify the CRI middleware containers and decode
 
 Gate: **partially met.** Whole stages assemble from original archives and render
@@ -207,12 +208,12 @@ Gate: Zone 1 Act 1 playable start to finish.
 
 ## Known risks
 
-- **Shader translation — downgraded.** 1,843 shaders are compiled D3D9 bytecode,
-  which sounded like a large re-authoring job until the version tokens were
-  decoded: they are all Shader Model 3.0 with `CTAB` constant tables, the exact
-  input MojoShader consumes. That turns it into an off-the-shelf translation
-  step. Still the single most important thing to prove with an early spike,
-  because the mobile target rests on it.
+- **Shader translation — largely retired.** All 1,843 shaders now verified as
+  well-formed SM3.0 carrying `CTAB` and using only documented SM1-3 opcodes,
+  which is precisely MojoShader's input. What remains is a *quality and coverage*
+  risk rather than a feasibility one: `ps_3_0` wants ES 3.0 class hardware, ES 2.0
+  devices will need fallbacks, and translating 1,843 shaders at load time on a
+  phone means caching the output matters.
 - **Effort asymmetry.** Phase 1 was days. Phase 4 is the multi-year part, and no
   amount of tooling shortens it much.
 - **Beta divergence.** This is Beta 8, not retail. Formats and content may differ

@@ -16,6 +16,8 @@ Early, but the foundations are real. Every number below is verified against the
  - Tile ids to 3D models — **13/13** act maps index cleanly into their tileset
  - Whole stages assemble — **17,526 tiles** instanced into 1.6M triangles for
    Zone 1 Act 1, and the orthographic render matches the tile grid's silhouette
+ - Shaders — **1843/1843** parse as clean SM3.0, which is what makes the mobile
+   plan credible rather than hopeful
  - Nothing playable yet. No engine, no game code, don't get excited.
 
 Tools are Python with zero dependencies. `stagemap.py` renders layers to PNG,
@@ -81,6 +83,7 @@ advantage and I'm not going to pretend otherwise.
 | `tools/txb.py` | texture banks |
 | `tools/nn.py` | SEGA NN models — containers, geometry, nodes, textures, OBJ export |
 | `tools/stageview.py` | assembles a whole stage from grid + models, OBJ and PNG |
+| `tools/shader.py` | D3D9 shader bytecode — parse, verify, opcode census |
 | `docs/` | format specifications, all marked VERIFIED / INFERRED / OPEN |
 | `plans/EXECPLAN.md` | the roadmap and why the PC build was chosen |
 
@@ -119,9 +122,13 @@ below.
 ## The renderer won't come for free
 
 Episode I's graphics layer is a fixed-function OpenGL ES 1.x shim. Episode II is
-shader-driven: 3,577 models and 1,843 Shader Model 3.0 shaders. The oracle runs
-out right about here. The shaders themselves should translate through MojoShader,
-which is what FNA already does — but that needs proving, not assuming.
+shader-driven: 3,577 models and 1,843 shaders. The oracle runs out right about
+here, and the renderer is genuine new work rather than a port.
+
+The shaders themselves are no longer the worry. All 1,843 verified as well-formed
+`ps_3_0`/`vs_3_0` with constant tables, using only documented opcodes — exactly
+what MojoShader eats. What's left there is output quality and ES 2.0 fallbacks,
+not "can this be done".
 
 ## Object ids are still anonymous
 
