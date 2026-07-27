@@ -377,6 +377,34 @@ Nodes are stored parents-before-children everywhere in this build, but that is a
 observation rather than a guarantee, so the walk falls back to a node's local
 transform when its parent has not been resolved yet.
 
+### Which mesh belongs to which node
+
+`NnMeshSet` carries the answer at `+0x10`, and it holds up everywhere:
+**11,565 of 11,565 mesh sets across 3,546 models have a `NodeIndex` inside their
+model's node array.** Just over half are 0, which is what you expect of the many
+rigid single-node props.
+
+`MatrixIndex` at `+0x14` is a second, different thing. It is `-1` on Sonic's
+eighteen mesh sets, which is the marker for **palette skinning**: the vertices are
+weighted across several matrices rather than riding one node.
+
+### Why that stops short of drawing Sonic
+
+His geometry is authored in a **centred model space** — raw positions span y -5.82
+to 5.82 — while his posed skeleton stands from **0 to 10.73**. The two are not the
+same space, and the five nodes his meshes bind to (104 to 108) all sit at the
+origin, one exactly identity and two carrying a **-16384 rotation about X**, which
+is a clean -90 degrees and the usual Y-up/Z-up axis conversion.
+
+So multiplying his vertices by `world[NodeIndex]` would not pose him, it would
+double-transform them. Posing a skinned model needs the matrix palette that
+`n_mtxpal` counts, plus the blend indices and weights in the vertex format —
+neither of which is decoded yet. **That is what stands between this project and a
+Sonic on screen**, and it is a discrete piece of work rather than a loose end.
+
+Rigid models — anything with one node, or with meshes bound to a node that carries
+a real transform — can be posed with what is here today.
+
 ## Still open
 
 - **The render-state block's contents.** The material's texture binding is
