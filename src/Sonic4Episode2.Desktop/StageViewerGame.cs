@@ -26,7 +26,8 @@ namespace Sonic4Episode2.Desktop;
 public sealed class StageViewerGame : Game
 {
     private readonly GraphicsDeviceManager _graphics;
-    private readonly string _gameRoot;
+    private readonly IInputSource? _input;
+    private readonly IContentSource _content;
     private readonly string _actArchive;
 
     private BasicEffect _effect = null!;
@@ -47,9 +48,17 @@ public sealed class StageViewerGame : Game
     private int _shownRings = -1;
     private bool _shownRolling;
 
+    /// <summary>
+    /// Runs against an installed copy with keyboard input, which is the desktop
+    /// case. The other constructor is what the mobile heads use.
+    /// </summary>
     public StageViewerGame(string gameRoot, string actArchive)
+        : this(new FileSystemContent(gameRoot), actArchive, null) { }
+
+    public StageViewerGame(IContentSource content, string actArchive, IInputSource? input)
     {
-        _gameRoot = gameRoot;
+        _content = content;
+        _input = input;
         _actArchive = actArchive;
         _graphics = new GraphicsDeviceManager(this)
         {
@@ -74,7 +83,7 @@ public sealed class StageViewerGame : Game
     /// </remarks>
     private void LoadStage()
     {
-        _engine = new GameEngine(_gameRoot) { ActArchive = _actArchive };
+        _engine = new GameEngine(_content) { ActArchive = _actArchive };
 
         // The boot scene requests its own exit on entry, so a single step lands
         // in the stage scene with its archives mounted.
@@ -137,16 +146,14 @@ public sealed class StageViewerGame : Game
     /// </remarks>
     private void LoadTextures(string actPath)
     {
-        string? directory = Path.GetDirectoryName(actPath);
-        if (directory is null) return;
+        int cut = actPath.LastIndexOf('/');
+        string directory = cut < 0 ? "" : actPath[..cut];
 
-        foreach (string file in Directory.EnumerateFiles(directory, "*.AMB"))
+        foreach (string file in _content.List(directory, "_T.AMB")
+                                       .Concat(_content.List(directory, "_TEX.AMB")))
         {
-            string upper = Path.GetFileName(file).ToUpperInvariant();
-            if (!upper.EndsWith("_T.AMB") && !upper.EndsWith("_TEX.AMB")) continue;
-
             AmbArchive archive;
-            try { archive = AmbArchive.Load(file); }
+            try { archive = AmbArchive.Parse(_content.Read(file)); }
             catch (AmbException) { continue; }
 
             foreach (var entry in archive.Entries)
@@ -187,7 +194,7 @@ public sealed class StageViewerGame : Game
         _ring = new Texture2D(GraphicsDevice, 1, 1);
         _ring.SetData(new[] { new Color(255, 200, 40) });
 
-        LoadTextures(Path.Combine(_gameRoot, _actArchive));
+        LoadTextures(_actArchive);
         if (_pending is not null)
         {
             BuildBuffers(_pending);
@@ -303,17 +310,26 @@ public sealed class StageViewerGame : Game
         // acts on this frame's input rather than last frame's.
         if (_engine.Player is not null && _followPlayer)
         {
-            float move = 0f;
-            if (keyboard.IsKeyDown(Keys.Left) || keyboard.IsKeyDown(Keys.A)) move -= 1f;
-            if (keyboard.IsKeyDown(Keys.Right) || keyboard.IsKeyDown(Keys.D)) move += 1f;
-            _engine.Player.InputX = move;
-            _engine.Player.InputJump =
-                keyboard.IsKeyDown(Keys.Space) ||
-                keyboard.IsKeyDown(Keys.Z) ||
-                keyboard.IsKeyDown(Keys.Up) ||
-                keyboard.IsKeyDown(Keys.W);
-            _engine.Player.InputDown =
-                keyboard.IsKeyDown(Keys.Down) || keyboard.IsKeyDown(Keys.S);
+            if (_input is not null)
+            {
+                _input.Apply(_engine.Player,
+                             GraphicsDevice.Viewport.Width,
+                             GraphicsDevice.Viewport.Height);
+            }
+            else
+            {
+                float move = 0f;
+                if (keyboard.IsKeyDown(Keys.Left) || keyboard.IsKeyDown(Keys.A)) move -= 1f;
+                if (keyboard.IsKeyDown(Keys.Right) || keyboard.IsKeyDown(Keys.D)) move += 1f;
+                _engine.Player.InputX = move;
+                _engine.Player.InputJump =
+                    keyboard.IsKeyDown(Keys.Space) ||
+                    keyboard.IsKeyDown(Keys.Z) ||
+                    keyboard.IsKeyDown(Keys.Up) ||
+                    keyboard.IsKeyDown(Keys.W);
+                _engine.Player.InputDown =
+                    keyboard.IsKeyDown(Keys.Down) || keyboard.IsKeyDown(Keys.S);
+            }
         }
 
         _engine.Step();
