@@ -1090,5 +1090,10 @@
    "PoolMax": 96,
    "CoyoteFrames": 24
   }
- ]
+ ],
+ "spinDash": {
+  "SpinDashLaunchPerCharge": 0.5,
+  "SpinDashLaunchBase": 8.0,
+  "SpinDashDecayRate": 0.03125
+ }
 }

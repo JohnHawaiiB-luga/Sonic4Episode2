@@ -78,6 +78,16 @@ public sealed class Player : GameObject
     /// <summary>Input for the coming frame: crouch, which starts a roll.</summary>
     public bool InputDown { get; set; }
 
+    public float SpinDashBase => _physics.SpinDashBase * _scale;
+    public float SpinDashCharge => _physics.SpinDashCharge * _scale;
+    public float SpinDashMax => _physics.SpinDashMax * _scale;
+
+    /// <summary>Charge wound into a spin dash, zero when not winding one up.</summary>
+    public float DashPower { get; private set; }
+
+    /// <summary>Whether the player is crouched and winding up a spin dash.</summary>
+    public bool Charging { get; private set; }
+
     /// <summary>Ground angle under the player last frame, in degrees.</summary>
     public float GroundAngle { get; private set; }
 
@@ -91,9 +101,11 @@ public sealed class Player : GameObject
 
     private bool _jumpHeld;
     private bool _cuttingJump;
+    private bool _justLaunched;
 
     private void Think()
     {
+        UpdateSpinDash();
         UpdateRollState();
 
         // Ground and air are separately tuned in the table, and the difference is
@@ -105,7 +117,16 @@ public sealed class Player : GameObject
 
         // Rolling gives up steering entirely and coasts on a much lighter
         // friction - 0.03125 against 0.125 - which is what makes it worth doing.
-        if (Rolling && OnGround)
+        if (Charging)
+        {
+            // Winding up holds the player still.
+            Velocity.X = 0f;
+        }
+        else if (_justLaunched)
+        {
+            _justLaunched = false;
+        }
+        else if (Rolling && OnGround)
         {
             Velocity.X -= MathF.Sign(Velocity.X) *
                           MathF.Min(MathF.Abs(Velocity.X), RollingDrag());
@@ -125,8 +146,9 @@ public sealed class Player : GameObject
 
         ApplySlope();
 
-        // Edge-triggered so holding jump does not re-fire on landing.
-        if (InputJump && !_jumpHeld && OnGround)
+        // Edge-triggered so holding jump does not re-fire on landing. Charging a
+        // spin dash consumes the press, so it must not also jump.
+        if (InputJump && !_jumpHeld && OnGround && !Charging)
         {
             Velocity.Y = JumpVelocity;
             _cuttingJump = false;
@@ -143,6 +165,73 @@ public sealed class Player : GameObject
         Velocity.Y -= Gravity;
         if (_cuttingJump) Velocity.Y -= Gravity;
         if (Velocity.Y < -TerminalVelocity) Velocity.Y = -TerminalVelocity;
+    }
+
+    /// <summary>
+    /// Winds up and releases a spin dash.
+    /// </summary>
+    /// <remarks>
+    /// Crouching at a standstill starts the wind-up. Each fresh press of jump adds
+    /// a charge, capped; between presses the charge bleeds proportionally, so
+    /// hesitating costs speed. Releasing crouch launches at
+    /// <c>base + charge * perCharge</c> — <b>9.5 px/frame for one charge and 13.0
+    /// for a full one</b>.
+    /// <para>
+    /// Episode I's launch spans 12.125 to 13.0, so charging barely mattered.
+    /// Episode II kept the ceiling and dropped the floor, which is a real change in
+    /// how the move plays and not something worth approximating — both constants
+    /// are read from the launch expression at <c>0x00513005</c>.
+    /// </para>
+    /// </remarks>
+    private void UpdateSpinDash()
+    {
+        if (!Charging)
+        {
+            // Only from a standstill; crouching while moving rolls instead.
+            if (OnGround && InputDown && MathF.Abs(Velocity.X) < RollThreshold)
+            {
+                Charging = true;
+                DashPower = 0f;
+            }
+            return;
+        }
+
+        if (!OnGround) { Charging = false; DashPower = 0f; return; }
+
+        if (!InputDown)
+        {
+            float launch = PlayerPhysics.SpinDashLaunchBase * _scale +
+                           DashPower * PlayerPhysics.SpinDashLaunchPerCharge;
+            Velocity.X = FacingLeft ? -launch : launch;
+            Charging = false;
+            DashPower = 0f;
+            Rolling = true;
+            // The launch frame is not also a friction frame: the engine sets the
+            // speed and leaves that state, so drag starts on the frame after.
+            _justLaunched = true;
+            return;
+        }
+
+        if (InputJump && !_jumpHeld)
+            DashPower = DashPower == 0f
+                ? SpinDashBase
+                : SpeedUp(DashPower, SpinDashCharge, SpinDashMax);
+        else
+            DashPower = DownToZero(DashPower, DashPower * PlayerPhysics.SpinDashDecayRate);
+    }
+
+    /// <summary>
+    /// Moves a value toward zero by a step, stopping at zero.
+    /// </summary>
+    /// <remarks>
+    /// Episode I calls this <c>ObjSpdDownSet</c>; Episode II's is at
+    /// <c>0x005A8800</c> and does the same thing, branching on the sign so it
+    /// subtracts when positive and adds when negative.
+    /// </remarks>
+    private static float DownToZero(float current, float step)
+    {
+        float drop = MathF.Min(MathF.Abs(current), MathF.Abs(step));
+        return current - MathF.Sign(current) * drop;
     }
 
     /// <summary>

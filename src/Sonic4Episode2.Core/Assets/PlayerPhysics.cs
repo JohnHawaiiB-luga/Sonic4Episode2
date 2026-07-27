@@ -74,6 +74,35 @@ public readonly record struct PlayerPhysics(
     int PoolMax,
     int CoyoteFrames)
 {
+    /// <summary>
+    /// Spin-dash launch speed is <c>8 + charge *
+    /// 0.5</c>, so a single charge of
+    /// 3 launches at
+    /// 9.5
+    /// and a full one of 10 at
+    /// 13.
+    /// </summary>
+    /// <remarks>
+    /// Episode I uses <c>11.75 + charge * 0.125</c>, which spans 12.125 to 13.0 —
+    /// the same ceiling, but almost no reward for charging. Episode II widened the
+    /// floor instead. Both constants are doubles, read from the launch expression
+    /// at <c>0x00513005</c>.
+    /// </remarks>
+    public const float SpinDashLaunchBase = 8.0f;
+
+    /// <inheritdoc cref="SpinDashLaunchBase"/>
+    public const float SpinDashLaunchPerCharge = 0.5f;
+
+    /// <summary>
+    /// Fraction of the charge that bleeds away each frame while winding up.
+    /// </summary>
+    /// <remarks>
+    /// The engine decays proportionally — <c>charge -= charge * this</c> — through
+    /// the same decrease-toward-zero helper the ground friction uses, at
+    /// <c>0x005A8800</c>.
+    /// </remarks>
+    public const float SpinDashDecayRate = 0.03125f;
+
     /// <summary>Game pixels spanned by one collision cell.</summary>
     /// <remarks>
     /// From the collision format: a cell holds 64 height columns, and its 32

@@ -184,17 +184,37 @@ px/frame, which is what `Player.RollThreshold` uses — but 0.5 occurs 168 times
 Episode II's constant pool, so unlike the parameter table it could not be
 confirmed. It is flagged as such in the code.
 
-## Spin dash — charge recovered, launch not
+## Spin dash
 
-The charge values are in the table and are Episode II's: base **3.0**, **2.0** per
-revolution, capped at **10.0**. What is missing is the conversion from charge to
-launch speed.
+Fully recovered and implemented. The charge values are in the per-character table
+— base **3.0**, **2.0** per revolution, capped at **10.0** — and the launch
+constants are globals, stored as doubles and read off the launch expression at
+`0x00513005`:
 
-Episode I computes it as `11.75 + charge / 8`, from `GMD_PL_SPINDASH_SPD` 48128
-and `GMD_PL_SPINDASH_MUL` 512. **`11.75` does not occur anywhere in Episode II's
-constant pool**, so that formula did not survive and guessing it would put an
-invented number into the one mechanic people can feel most precisely. Spin dash
-stays unimplemented until its own code is read.
+```asm
+fld   dword [esi + 0x3518]   ; charge
+fmul  qword [0x743ea0]       ; 0.5
+fadd  qword [0x744030]       ; 8.0
+```
+
+So **`launch = 8.0 + charge * 0.5`**. One charge gives **9.5 px/frame** and a full
+one **13.0**.
+
+Episode I's is `11.75 + charge * 0.125`, spanning 12.125 to 13.0. **Episode II
+kept the ceiling and dropped the floor**, so charging went from nearly pointless
+to worth two thirds of the move's speed. That is a real difference in how the
+move plays, and it is exactly why beat 28 refused to port Episode I's formula:
+`11.75` appears nowhere in Episode II, and guessing would have felt wrong in a way
+players notice.
+
+While winding up, the charge bleeds **proportionally** — `charge -= charge *
+0.03125` per frame, through the same decrease-toward-zero helper the ground
+friction uses at `0x005A8800`. Hesitating costs speed.
+
+The player work struct holds the live charge at `+0x3518`; the live copy of every
+table field sits at `+0x3578 + field * 4`, which is how these were found — the
+copy routine at `0x0046AE84` compares `[esi+0x3578]` against table field 0 and
+`[esi+0x357c]` against field 1.
 
 ## Not yet used
 

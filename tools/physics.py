@@ -60,6 +60,15 @@ MODES = ["Normal", "Super", "SpecialStage", "Pinball", "PinballSuper",
 JUMP = 23130 / 4096.0
 GRAVITY = 680 / 4096.0
 
+# Spin-dash constants. Unlike the per-character tuning these are globals, stored
+# as doubles and read straight out of the release and charge code at 0x00512FA5
+# and 0x00513005.
+SPIN_DASH = {
+    "SpinDashLaunchPerCharge": 0x00743EA0,   # fmul in the launch expression
+    "SpinDashLaunchBase": 0x00744030,        # fadd in the launch expression
+    "SpinDashDecayRate": 0x00744468,         # proportional bleed while charging
+}
+
 
 class Image:
     def __init__(self, data: bytes):
@@ -74,6 +83,13 @@ class Image:
             name = data[at:at + 8].rstrip(b"\0").decode("ascii", "replace")
             vsize, vaddr, rsize, raddr = struct.unpack_from("<IIII", data, at + 8)
             self.sections.append((name, vaddr, vsize, raddr, rsize))
+
+    def offset(self, va: int) -> int | None:
+        for _n, vaddr, vsize, raddr, rsize in self.sections:
+            rel = va - self.base - vaddr
+            if 0 <= rel < vsize and rel < rsize:
+                return raddr + rel
+        return None
 
     def va(self, offset: int) -> int | None:
         for _n, vaddr, _vs, raddr, rsize in self.sections:
@@ -122,7 +138,17 @@ def read_rows(image: Image, start: int) -> list[dict]:
     return rows
 
 
-def emit_csharp(rows: list[dict], address: int, path: str) -> None:
+def read_spin_dash(image: Image) -> dict[str, float]:
+    """The three spin-dash globals, which live outside the per-character table."""
+    values = {}
+    for name, va in SPIN_DASH.items():
+        at = image.offset(va)
+        values[name] = struct.unpack_from("<d", image.data, at)[0]
+    return values
+
+
+def emit_csharp(rows: list[dict], address: int, path: str,
+                spin: dict[str, float]) -> None:
     order = [FLOAT_FIELDS[k] for k in sorted(FLOAT_FIELDS)] + INT_FIELDS
 
     def literal(row):
@@ -190,6 +216,35 @@ def emit_csharp(rows: list[dict], address: int, path: str) -> None:
 public readonly record struct PlayerPhysics(
 {",\n".join(f"    float {n}" if n not in INT_FIELDS else f"    int {n}" for n in order)})
 {{
+    /// <summary>
+    /// Spin-dash launch speed is <c>{spin["SpinDashLaunchBase"]:g} + charge *
+    /// {spin["SpinDashLaunchPerCharge"]:g}</c>, so a single charge of
+    /// {rows[0]["SpinDashBase"]:g} launches at
+    /// {spin["SpinDashLaunchBase"] + rows[0]["SpinDashBase"] * spin["SpinDashLaunchPerCharge"]:g}
+    /// and a full one of {rows[0]["SpinDashMax"]:g} at
+    /// {spin["SpinDashLaunchBase"] + rows[0]["SpinDashMax"] * spin["SpinDashLaunchPerCharge"]:g}.
+    /// </summary>
+    /// <remarks>
+    /// Episode I uses <c>11.75 + charge * 0.125</c>, which spans 12.125 to 13.0 —
+    /// the same ceiling, but almost no reward for charging. Episode II widened the
+    /// floor instead. Both constants are doubles, read from the launch expression
+    /// at <c>0x00513005</c>.
+    /// </remarks>
+    public const float SpinDashLaunchBase = {spin["SpinDashLaunchBase"]!r}f;
+
+    /// <inheritdoc cref="SpinDashLaunchBase"/>
+    public const float SpinDashLaunchPerCharge = {spin["SpinDashLaunchPerCharge"]!r}f;
+
+    /// <summary>
+    /// Fraction of the charge that bleeds away each frame while winding up.
+    /// </summary>
+    /// <remarks>
+    /// The engine decays proportionally — <c>charge -= charge * this</c> — through
+    /// the same decrease-toward-zero helper the ground friction uses, at
+    /// <c>0x005A8800</c>.
+    /// </remarks>
+    public const float SpinDashDecayRate = {spin["SpinDashDecayRate"]!r}f;
+
     /// <summary>Game pixels spanned by one collision cell.</summary>
     /// <remarks>
     /// From the collision format: a cell holds 64 height columns, and its 32
@@ -244,6 +299,7 @@ def main(argv=None) -> int:
 
     address = image.va(start)
     rows = read_rows(image, start)
+    spin = read_spin_dash(image)
     print(f"player parameter table at {address:#010x}: "
           f"{CHARACTER_COUNT} characters x {MODE_COUNT} modes, "
           f"rows of {ROW_STRIDE} bytes, character stride {CHARACTER_STRIDE}")
@@ -253,12 +309,17 @@ def main(argv=None) -> int:
               f"top {row['TopSpeed']:6.3f}  jump {row['JumpImpulse']:.4f}  "
               f"gravity {row['Gravity']:.5f}  coyote {row['CoyoteFrames']}")
 
+    print(f"  spin dash: launch = {spin['SpinDashLaunchBase']:g} + "
+          f"charge * {spin['SpinDashLaunchPerCharge']:g}, "
+          f"decay {spin['SpinDashDecayRate']:g}/frame")
+
     if args.json:
         os.makedirs(os.path.dirname(args.json) or ".", exist_ok=True)
-        json.dump({"address": address, "rows": rows}, open(args.json, "w"), indent=1)
+        json.dump({"address": address, "rows": rows, "spinDash": spin},
+                  open(args.json, "w"), indent=1)
         print(f"  wrote {args.json}")
     if args.csharp:
-        emit_csharp(rows, address, args.csharp)
+        emit_csharp(rows, address, args.csharp, spin)
         print(f"  wrote {args.csharp}")
     return 0
 
