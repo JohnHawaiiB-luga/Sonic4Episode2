@@ -73,6 +73,28 @@ This follows from the grid being the map at quarter resolution: four map cells
 per block across 256 pixels makes each map cell 64 pixels square. Placement
 positions computed this way land inside the stage bounds on every act checked.
 
+## Confirmed from the engine's own reader
+
+The record layout below is no longer an inference. `Sonic.exe:0x0053d541` is the
+loop that streams these records and spawns from them:
+
+```asm
+movzx edx, word [esi + 2]      ; object id
+movzx ecx, byte  [esi + 1]     ; local Y
+add   ecx, dword [esp + 0x18]  ; + block origin Y
+movzx eax, al                  ; local X, from [esi + 0]
+add   eax, dword [esp + 0x14]  ; + block origin X
+...
+mov   ecx, 0x323               ; 803
+cmp   dx, cx
+jae   skip                     ; ids at or above 803 are ignored
+mov   eax, dword [edx*4 + 0x7031c8]
+```
+
+So byte 0 is local X, byte 1 is local Y and the id is the `u16` at 2 — and the
+dispatch table's 803 entries are the engine's own bound, not something counted
+off a pointer run.
+
 ## `.DC` and `.RG` — same grid, different records
 
 These share the block-grid header exactly and differ only in record size,
@@ -84,9 +106,16 @@ verified across the build:
 | `.DC` |  4 bytes | `u8 x, u8 y, u16 id` |
 | `.RG` |  2 bytes | `u8 x, u8 y` |
 
-`.RG` carrying nothing but a position is consistent with ring placement, where
-the object type is implicit. `tools/stagemap.py` reads all three through
-`read_blocks(data, stride)`.
+**`.RG` is rings, and the counts prove it.** Acts carry 192 to 489 records, boss
+arenas carry exactly 12, and cutscenes carry none — 7,567 across the 34 acts in
+the build, every one inside its stage bounds. Nothing else in a Sonic act is
+numerous in that particular way, and a record carrying nothing but a position is
+what you would expect when the type is implicit in the filename.
+
+This also settles a question that looked harder than it was. The most-placed
+`.EV` object ids — 715, 724 and 716, nearly 2,900 placements between them — are
+**not** rings and no `.EV` id is. Rings never had an object id to find.
+`tools/stagemap.py` reads all three block files through `read_blocks(data, stride)`.
 
 Note that an all-empty file trivially satisfies *any* stride, so stride tests
 must be run on files that actually contain records.

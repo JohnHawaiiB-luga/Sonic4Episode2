@@ -73,6 +73,9 @@ public sealed class GameEngine
     /// <summary>Object placements read from the stage's `.EV` files.</summary>
     public IReadOnlyList<Placement> Placements { get; private set; } = [];
 
+    /// <summary>Ring positions, which come from the stage's `.RG` file.</summary>
+    public IReadOnlyList<Ring> Rings { get; private set; } = [];
+
     public string? StageName { get; private set; }
     public ulong Frame { get; private set; }
 
@@ -102,6 +105,7 @@ public sealed class GameEngine
         var assembler = new StageAssembler(AmbArchive.Load(tilesetPath));
         var batch = new StageBatch();
         var placements = new List<Placement>();
+        var rings = new List<Ring>();
 
         // Ground shapes and their angles live in the zone's ATTR archive.
         var (shapes, angles) = LoadShapes(actPath);
@@ -130,6 +134,11 @@ public sealed class GameEngine
                         EventPlacements.Parse(archive.Read(entry).Span).Items);
                 continue;
             }
+            if (label.EndsWith(".RG", StringComparison.OrdinalIgnoreCase))
+            {
+                rings.AddRange(RingPlacements.Parse(archive.Read(entry).Span).Items);
+                continue;
+            }
             if (!label.EndsWith("_B.MP", StringComparison.OrdinalIgnoreCase)) continue;
 
             var grid = StageGrid.Parse(label, archive.Read(entry).Span);
@@ -141,11 +150,13 @@ public sealed class GameEngine
 
         Stage = batch;
         Placements = placements;
+        Rings = rings;
         StageName = Path.GetFileNameWithoutExtension(actPath);
         int identified = placements.Count(p => ObjectCatalog.IsKnown(p.ObjectId));
         Status = $"{assembler.TilesPlaced} tiles, {batch.VertexCount:N0} vertices, " +
                  $"{batch.TriangleCount:N0} triangles, " +
-                 $"{identified}/{placements.Count} placements identified" +
+                 $"{identified}/{placements.Count} placements identified, " +
+                 $"{rings.Count} rings" +
                  (Collision?.HasShapes == true ? ", height fields" : ", blocky collision") +
                  (Collision?.HasAngles == true ? " with angles" : "");
 
@@ -208,6 +219,7 @@ public sealed class GameEngine
         Collision = null;
         Player = null;
         Placements = [];
+        Rings = [];
     }
 
     /// <summary>Runs one frame.</summary>
