@@ -36,6 +36,7 @@ public sealed class StageViewerGame : Game
     private StageBatch? _pending;
     private Texture2D _white = null!;
     private Texture2D _marker = null!;
+    private Texture2D _ring = null!;
     private GameEngine _engine = null!;
 
     private Vector2 _camera;
@@ -43,6 +44,7 @@ public sealed class StageViewerGame : Game
     private bool _followPlayer;
     private bool _tabHeld;
     private string _status = "";
+    private int _shownRings = -1;
 
     public StageViewerGame(string gameRoot, string actArchive)
     {
@@ -181,6 +183,8 @@ public sealed class StageViewerGame : Game
         _white.SetData(new[] { Color.Gray });
         _marker = new Texture2D(GraphicsDevice, 1, 1);
         _marker.SetData(new[] { new Color(70, 130, 255) });
+        _ring = new Texture2D(GraphicsDevice, 1, 1);
+        _ring.SetData(new[] { new Color(255, 200, 40) });
 
         LoadTextures(Path.Combine(_gameRoot, _actArchive));
         if (_pending is not null)
@@ -204,8 +208,8 @@ public sealed class StageViewerGame : Game
 
         float x = _engine.Player.Position.X;
         float y = _engine.Player.Position.Y;
-        const float halfWidth = Player.Width / 2f;
-        const float height = Player.Height;
+        float halfWidth = Player.Width / 2f;
+        float height = Player.Height;
         const float z = 400f;   // in front of every stage layer
 
         var corners = new[]
@@ -226,8 +230,65 @@ public sealed class StageViewerGame : Game
         }
     }
 
+    /// <summary>
+    /// A quad per uncollected ring.
+    /// </summary>
+    /// <remarks>
+    /// Rings come from the stage's own <c>.RG</c> file, so what this draws is the
+    /// original layout rather than anything invented. Only the ones still on the
+    /// field are drawn, which makes collection visible.
+    /// </remarks>
+    private void DrawRings()
+    {
+        var field = _engine.RingField;
+        if (field is null || field.Remaining == 0) return;
+
+        float half = RingField.RingPixels / 2f * PlayerPhysics.WorldPerPixel;
+        const float z = 390f;   // just behind the player marker
+
+        var corners = new VertexPositionNormalTexture[field.Remaining * 4];
+        var indices = new int[field.Remaining * 6];
+        int quad = 0;
+
+        for (int i = 0; i < field.Count; i++)
+        {
+            if (field.IsTaken(i)) continue;
+            var at = field.WorldPosition(i);
+            int v = quad * 4;
+            corners[v + 0] = new VertexPositionNormalTexture(
+                new Vector3(at.X - half, at.Y - half, z), Vector3.Backward, Vector2.Zero);
+            corners[v + 1] = new VertexPositionNormalTexture(
+                new Vector3(at.X + half, at.Y - half, z), Vector3.Backward, Vector2.Zero);
+            corners[v + 2] = new VertexPositionNormalTexture(
+                new Vector3(at.X - half, at.Y + half, z), Vector3.Backward, Vector2.Zero);
+            corners[v + 3] = new VertexPositionNormalTexture(
+                new Vector3(at.X + half, at.Y + half, z), Vector3.Backward, Vector2.Zero);
+
+            int t = quad * 6;
+            indices[t + 0] = v; indices[t + 1] = v + 1; indices[t + 2] = v + 2;
+            indices[t + 3] = v + 2; indices[t + 4] = v + 1; indices[t + 5] = v + 3;
+            quad++;
+        }
+
+        _effect.Texture = _ring;
+        foreach (var pass in _effect.CurrentTechnique.Passes)
+        {
+            pass.Apply();
+            GraphicsDevice.DrawUserIndexedPrimitives(
+                PrimitiveType.TriangleList, corners, 0, quad * 4, indices, 0, quad * 2);
+        }
+    }
+
     protected override void Update(GameTime gameTime)
     {
+        if (_engine.RingCount != _shownRings)
+        {
+            _shownRings = _engine.RingCount;
+            Window.Title = $"Sonic 4 Episode II - rings {_shownRings}" +
+                           (_engine.RingField is null
+                               ? "" : $" of {_engine.RingField.Count}");
+        }
+
         var keyboard = Keyboard.GetState();
         if (keyboard.IsKeyDown(Keys.Escape)) Exit();
 
@@ -319,6 +380,7 @@ public sealed class StageViewerGame : Game
                 }
             }
         }
+        DrawRings();
         DrawPlayerMarker();
         base.Draw(gameTime);
     }

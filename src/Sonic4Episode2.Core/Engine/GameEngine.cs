@@ -76,6 +76,12 @@ public sealed class GameEngine
     /// <summary>Ring positions, which come from the stage's `.RG` file.</summary>
     public IReadOnlyList<Ring> Rings { get; private set; } = [];
 
+    /// <summary>The mounted stage's rings and which have been taken.</summary>
+    public RingField? RingField { get; private set; }
+
+    /// <summary>Rings the player is carrying.</summary>
+    public int RingCount { get; private set; }
+
     public string? StageName { get; private set; }
     public ulong Frame { get; private set; }
 
@@ -151,6 +157,8 @@ public sealed class GameEngine
         Stage = batch;
         Placements = placements;
         Rings = rings;
+        RingField = new RingField(rings);
+        RingCount = 0;
         StageName = Path.GetFileNameWithoutExtension(actPath);
         int identified = placements.Count(p => ObjectCatalog.IsKnown(p.ObjectId));
         Status = $"{assembler.TilesPlaced} tiles, {batch.VertexCount:N0} vertices, " +
@@ -165,6 +173,8 @@ public sealed class GameEngine
         Scheduler.Create("GM_MAP_MAIN", _ => { }, PriorityMap, group: SceneGroup);
         Scheduler.Create("GM_EVT_MGR", _ => Objects.Step(Scheduler.PauseLevel),
                          PriorityObject, group: SceneGroup);
+        Scheduler.Create("GM_RING", _ => CollectRings(), PriorityObject,
+                         group: SceneGroup);
 
         if (Collision is not null)
         {
@@ -220,6 +230,16 @@ public sealed class GameEngine
         Player = null;
         Placements = [];
         Rings = [];
+        RingField = null;
+        RingCount = 0;
+    }
+
+    /// <summary>Hands the player any ring it is standing in.</summary>
+    private void CollectRings()
+    {
+        if (RingField is null || Player is null) return;
+        RingCount += RingField.Collect(new System.Numerics.Vector2(
+            Player.Position.X, Player.Position.Y));
     }
 
     /// <summary>Runs one frame.</summary>
