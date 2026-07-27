@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sonic4Episode2.Cli", "Sonic
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sonic4Episode2.Desktop", "Sonic4Episode2.Desktop\Sonic4Episode2.Desktop.csproj", "{86F56060-5D02-487C-964C-1CA49903592E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sonic4Episode2.Tests", "Sonic4Episode2.Tests\Sonic4Episode2.Tests.csproj", "{AA49EB78-0DA2-452F-A937-1FDEC47E74D8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -55,6 +57,18 @@ Global
 		{86F56060-5D02-487C-964C-1CA49903592E}.Release|x64.Build.0 = Release|Any CPU
 		{86F56060-5D02-487C-964C-1CA49903592E}.Release|x86.ActiveCfg = Release|Any CPU
 		{86F56060-5D02-487C-964C-1CA49903592E}.Release|x86.Build.0 = Release|Any CPU
+		{AA49EB78-0DA2-452F-A937-1FDEC47E74D8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AA49EB78-0DA2-452F-A937-1FDEC47E74D8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AA49EB78-0DA2-452F-A937-1FDEC47E74D8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{AA49EB78-0DA2-452F-A937-1FDEC47E74D8}.Debug|x64.Build.0 = Debug|Any CPU
+		{AA49EB78-0DA2-452F-A937-1FDEC47E74D8}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{AA49EB78-0DA2-452F-A937-1FDEC47E74D8}.Debug|x86.Build.0 = Debug|Any CPU
+		{AA49EB78-0DA2-452F-A937-1FDEC47E74D8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AA49EB78-0DA2-452F-A937-1FDEC47E74D8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AA49EB78-0DA2-452F-A937-1FDEC47E74D8}.Release|x64.ActiveCfg = Release|Any CPU
+		{AA49EB78-0DA2-452F-A937-1FDEC47E74D8}.Release|x64.Build.0 = Release|Any CPU
+		{AA49EB78-0DA2-452F-A937-1FDEC47E74D8}.Release|x86.ActiveCfg = Release|Any CPU
+		{AA49EB78-0DA2-452F-A937-1FDEC47E74D8}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
