@@ -1,7 +1,7 @@
 # Player physics
 
-Episode II's player tuning, read out of `Sonic.exe` at **`0x00710520`**. Seven
-rows of 108 bytes, one per playable mode.
+Episode II's player tuning, read out of `Sonic.exe` at **`0x00710520`** —
+**3 characters of 11 modes**, each row 108 bytes.
 
 ```
 python tools/physics.py Sonic.exe --json analysis/physics.json
@@ -29,21 +29,47 @@ separate `int`s. No float search would have surfaced them, and nothing else in
 Four of the seven jump impulses also match Episode I to the bit: 5.6470 (Sonic),
 7.9841 (Super), 4.7058 and 6.6534 (the Mad Gear rows).
 
-## The table
+## The shape
 
-Units are **game pixels per frame at 60 Hz**.
+The layout is the engine's own, not something counted off the data.
+`Sonic.exe:0x0046AEA1` scales a character id straight into the table:
 
-| Row | Mode | Accel | Top | Decel | Jump | Gravity | Air accel | Air drag | Coyote |
-|----:|------|------:|----:|------:|-----:|--------:|----------:|---------:|-------:|
-| 0 | Sonic | 0.0354 | 9 | 0.125 | 5.6470 | 0.16602 | 0.0625 | 0.0625 | 24 |
-| 1 | Super Sonic | 0.1062 | 15 | 0.5 | 7.9841 | 0.16602 | 0.1875 | 1.0 | 24 |
+```asm
+movzx ecx, byte [esi + 0x34f0]   ; character id, from the player work struct
+imul  ecx, ecx, 0x4a4            ; 1188 bytes per character
+fld   dword [ecx + 0x710520]     ; that character's first field
+```
+
+1188 is exactly 11 rows of 108, and the fourth such block is unrelated data — so
+**3 characters of 11 modes**.
+
+Characters 0 and 1 are physically identical bar one slope field, and both have a
+Super mode. Character 2 has none: its Super row simply repeats its normal values,
+which is what you would expect of Metal Sonic.
+
+## The modes
+
+Modes 0 to 6 match Episode I's `char_id` enumeration in order *and* in value, so
+the names are inherited from it. Modes 7 and 8 have no Episode I counterpart, and
+9 and 10 are unidentified — they carry ordinary values.
+
+Units are **game pixels per frame at 60 Hz**. Character 0:
+
+| Mode | Name | Accel | Top | Decel | Jump | Gravity | Air accel | Air drag | Coyote |
+|-----:|------|------:|----:|------:|-----:|--------:|----------:|---------:|-------:|
+| 0 | Normal | 0.0354 | 9 | 0.125 | 5.6470 | 0.16602 | 0.0625 | 0.0625 | 24 |
+| 1 | Super | 0.1062 | 15 | 0.5 | 7.9841 | 0.16602 | 0.1875 | 1.0 | 24 |
 | 2 | Special Stage | 0.0354 | 9 | 0.125 | 5.6470 | 0.16602 | 0.1875 | 0.0625 | 24 |
 | 3 | Pinball | 0.0354 | 9 | 0.125 | 5.6470 | 0.16602 | 0.0625 | 0.0625 | 24 |
 | 4 | Pinball Super | 0.1062 | 15 | 0.5 | 7.9841 | 0.16602 | 0.1875 | 1.0 | 24 |
 | 5 | Mad Gear | 0.0354 | 10 | 0.125 | 4.7058 | 0.16602 | 0.0625 | 0.125 | 120 |
 | 6 | Mad Gear Super | 0.1062 | 11 | 0.125 | 6.6534 | 0.16602 | 0.1875 | 0.25 | 120 |
+| 7 | Slowed 1 | 0.00177 | 0.225 | 0.0125 | 2.8235 | 0.16602 | 0.003125 | 0.00625 | 24 |
+| 8 | Slowed 2 | 0.00531 | 0.375 | 0.05 | 3.9921 | 0.16602 | 0.009375 | 0.1 | 24 |
 
-Gravity is identical in all seven rows. Terminal velocity is 15 throughout.
+Modes 7 and 8 are a fortieth and a twenty-fourth of normal top speed, with
+**gravity untouched** — so they are slowed movement rather than slow motion.
+Terminal velocity is 15 and gravity 0.16602 in every row of the table.
 
 ## What Episode II retuned
 

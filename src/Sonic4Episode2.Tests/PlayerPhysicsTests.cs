@@ -6,9 +6,51 @@ namespace Sonic4Episode2.Tests;
 public class PlayerPhysicsTests
 {
     [Fact]
-    public void SevenModes_MatchingEpisodeOnesCharacterTable()
+    public void ThreeCharactersOfElevenModes()
     {
-        Assert.Equal(7, PlayerPhysics.All.Length);
+        // The shape is the engine's own: `imul ecx, ecx, 0x4a4` scales a character
+        // id by 1188 bytes, which is 11 rows of 108.
+        Assert.Equal(3, PlayerPhysics.CharacterCount);
+        Assert.Equal(11, PlayerPhysics.ModeCount);
+        Assert.Equal(33, PlayerPhysics.All.Length);
+        Assert.Equal(PlayerPhysics.All[0], PlayerPhysics.For(0, 0));
+        Assert.Equal(PlayerPhysics.All[12], PlayerPhysics.For(1, 1));
+    }
+
+    [Fact]
+    public void CharactersZeroAndOneSharePhysics()
+    {
+        // 24 of 25 float fields are identical between them; only one slope field
+        // differs. Whatever separates those two characters, it is not the tuning.
+        var a = PlayerPhysics.For(0, 0);
+        var b = PlayerPhysics.For(1, 0);
+        Assert.Equal(a.TopSpeed, b.TopSpeed);
+        Assert.Equal(a.JumpImpulse, b.JumpImpulse);
+        Assert.Equal(a.Gravity, b.Gravity);
+    }
+
+    [Fact]
+    public void CharacterTwoHasNoSuperMode()
+    {
+        // Its Super row simply repeats its normal values, which is what you would
+        // expect of a character that cannot transform.
+        var normal = PlayerPhysics.For(2, 0);
+        var super = PlayerPhysics.For(2, 1);
+        Assert.Equal(normal.TopSpeed, super.TopSpeed);
+        Assert.Equal(normal.JumpImpulse, super.JumpImpulse);
+
+        // Whereas character 0's Super row really is different.
+        Assert.NotEqual(PlayerPhysics.For(0, 0).TopSpeed,
+                        PlayerPhysics.For(0, 1).TopSpeed);
+    }
+
+    [Fact]
+    public void ModesSevenAndEightAreHeavilySlowed()
+    {
+        Assert.True(PlayerPhysics.For(0, 7).TopSpeed < 1f);
+        Assert.True(PlayerPhysics.For(0, 8).TopSpeed < 1f);
+        // Gravity is untouched, so they are slowed movement rather than slow motion.
+        Assert.Equal(PlayerPhysics.For(0, 0).Gravity, PlayerPhysics.For(0, 7).Gravity);
     }
 
     [Fact]
@@ -41,8 +83,8 @@ public class PlayerPhysicsTests
     [Fact]
     public void SuperSonicIsFasterOnEveryAxisThatMatters()
     {
-        var sonic = PlayerPhysics.All[0];
-        var super = PlayerPhysics.All[1];
+        var sonic = PlayerPhysics.For(0, 0);
+        var super = PlayerPhysics.For(0, 1);
         Assert.True(super.GroundAcceleration > sonic.GroundAcceleration);
         Assert.True(super.TopSpeed > sonic.TopSpeed);
         Assert.True(super.JumpImpulse > sonic.JumpImpulse);
@@ -53,9 +95,9 @@ public class PlayerPhysicsTests
     [Fact]
     public void MadGearRunsWithALongerCoyoteWindow()
     {
-        // The Mad Gear rows are the only ones that move it, 24 frames to 120.
-        Assert.Equal(120, PlayerPhysics.All[5].CoyoteFrames);
-        Assert.Equal(120, PlayerPhysics.All[6].CoyoteFrames);
+        // The Mad Gear modes are the only ones that move it, 24 frames to 120.
+        Assert.Equal(120, PlayerPhysics.For(0, 5).CoyoteFrames);
+        Assert.Equal(120, PlayerPhysics.For(0, 6).CoyoteFrames);
     }
 
     [Fact]
@@ -67,6 +109,19 @@ public class PlayerPhysicsTests
             Assert.True(p.GroundAcceleration > 0f);
             Assert.True(p.Gravity > 0f);
             Assert.True(p.JumpImpulse > p.Gravity);
+        });
+    }
+
+    [Fact]
+    public void TheCountersAreTheSameInEveryRow()
+    {
+        // They are what identified the table, so a row where they drift would
+        // mean the stride is wrong.
+        Assert.All(PlayerPhysics.All, p =>
+        {
+            Assert.Equal(1800, p.BreathFrames);
+            Assert.Equal(180, p.InvincibleFrames);
+            Assert.Equal(96, p.PoolMax);
         });
     }
 
@@ -92,7 +147,7 @@ public class PlayerPhysicsTests
     public void ADifferentRowGivesADifferentPlayer()
     {
         var map = CollisionMap.FromGrid(TestGrid());
-        var super = new Player(map, PlayerPhysics.All[1]);
+        var super = new Player(map, PlayerPhysics.For(0, 1));
         Assert.True(super.MaxSpeed > new Player(map).MaxSpeed);
     }
 

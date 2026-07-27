@@ -2,9 +2,13 @@
 """Recover the player parameter table from Sonic.exe.
 
 Episode I keeps its player tuning in `g_gm_player_parameter[7]`, an array of
-FX32 fixed-point integers. Episode II keeps the same table in the same field
-order for the same seven characters, but stores the speeds as floats — so the
-values are directly readable once you know where to look.
+FX32 fixed-point integers. Episode II keeps the same field order but stores the
+speeds as floats, and arranges them as **3 characters of 11 modes** rather than
+Episode I's flat 7 — so the values are directly readable once you know the shape.
+
+The shape comes from the engine, not from counting: `imul ecx, ecx, 0x4a4` at
+`0x0046AEA1` scales a character id by 1188 bytes, which is exactly 11 rows of
+108, and the fourth such block is unrelated data.
 
 Finding it is a matter of searching for one number. Episode I's jump impulse is
 23130 in FX32, which is 5.64697265625 as a float, and it sits immediately before
@@ -27,7 +31,9 @@ import struct
 import sys
 
 ROW_STRIDE = 108           # 27 dwords
-ROW_COUNT = 7              # SONIC, S_SONIC, SP_SONIC, PN_SONIC, PN_S_SONIC, TR_*, TR_S_*
+MODE_COUNT = 11            # rows per character
+CHARACTER_STRIDE = 0x4A4   # 1188 = 11 * 108, read straight off `imul ecx, ecx, 0x4a4`
+CHARACTER_COUNT = 3        # the fourth block is unrelated data
 
 # Field order carried over from Episode I's GMS_PLY_PARAMETER. Slots 8 and 9 hold
 # four u16 counters rather than a float, and slot 13 has no Episode I counterpart.
@@ -44,8 +50,11 @@ FLOAT_FIELDS = {
 }
 INT_FIELDS = ["BreathFrames", "InvincibleFrames", "PoolMax", "CoyoteFrames"]
 
-CHARACTERS = ["Sonic", "SuperSonic", "SpecialStage", "Pinball",
-              "PinballSuper", "MadGear", "MadGearSuper"]
+# Modes 0-6 keep Episode I's char_id enumeration, which they match in order and
+# in value. 7 and 8 are heavily slowed variants with no Episode I counterpart;
+# 9 and 10 carry ordinary values and are not identified.
+MODES = ["Normal", "Super", "SpecialStage", "Pinball", "PinballSuper",
+         "MadGear", "MadGearSuper", "Slowed1", "Slowed2", "Spare1", "Spare2"]
 
 # Episode I's Sonic row, as floats. The anchor.
 JUMP = 23130 / 4096.0
@@ -74,7 +83,7 @@ class Image:
 
 
 def find_table(image: Image) -> int | None:
-    """File offset of row 0, located from the jump/gravity pair."""
+    """File offset of character 0 mode 0, located from the jump/gravity pair."""
     anchor = struct.pack("<f", JUMP) + struct.pack("<f", GRAVITY)
     hits = [m.start() for m in re.finditer(re.escape(anchor), image.data)]
     if not hits:
@@ -98,16 +107,18 @@ def plausible(image: Image, at: int) -> bool:
 
 
 def read_rows(image: Image, start: int) -> list[dict]:
+    """Every row, character-major, so index is `character * MODE_COUNT + mode`."""
     rows = []
-    for i in range(ROW_COUNT):
-        at = start + i * ROW_STRIDE
-        row = {"character": CHARACTERS[i]}
-        for slot, name in FLOAT_FIELDS.items():
-            row[name] = struct.unpack_from("<f", image.data, at + slot * 4)[0]
-        for name, value in zip(INT_FIELDS,
-                               struct.unpack_from("<HHHH", image.data, at + 32)):
-            row[name] = value
-        rows.append(row)
+    for character in range(CHARACTER_COUNT):
+        for mode in range(MODE_COUNT):
+            at = start + character * CHARACTER_STRIDE + mode * ROW_STRIDE
+            row = {"character": character, "mode": MODES[mode]}
+            for slot, name in FLOAT_FIELDS.items():
+                row[name] = struct.unpack_from("<f", image.data, at + slot * 4)[0]
+            for name, value in zip(INT_FIELDS,
+                                   struct.unpack_from("<HHHH", image.data, at + 32)):
+                row[name] = value
+            rows.append(row)
     return rows
 
 
@@ -128,7 +139,8 @@ def emit_csharp(rows: list[dict], address: int, path: str) -> None:
         for k, name in [(k, FLOAT_FIELDS[k]) for k in sorted(FLOAT_FIELDS)])
 
     rows_src = "\n".join(
-        f"        // {r['character']}\n        new({literal(r)})," for r in rows)
+        f"        // character {r['character']}, {r['mode']}\n        new({literal(r)}),"
+        for r in rows)
 
     src = f'''namespace Sonic4Episode2.Core.Assets;
 
@@ -136,17 +148,27 @@ def emit_csharp(rows: list[dict], address: int, path: str) -> None:
 /// Episode II's own player tuning, read out of <c>Sonic.exe:{address:#010X}</c>.
 /// </summary>
 /// <remarks>
-/// Seven rows of {ROW_STRIDE} bytes, one per playable mode, in the same field order
-/// Episode I uses for <c>g_gm_player_parameter[7]</c>. Episode I stores these as
-/// FX32 fixed-point integers; Episode II stores the speeds as plain floats, so
-/// they can be read directly.
+/// <b>{CHARACTER_COUNT} characters of {MODE_COUNT} modes</b>, each row {ROW_STRIDE}
+/// bytes, in the same field order Episode I uses for
+/// <c>g_gm_player_parameter</c>. The character stride is {CHARACTER_STRIDE} bytes,
+/// read straight off the engine's own indexing — <c>imul ecx, ecx, 0x4a4</c> at
+/// <c>0x0046AEA1</c>, on a character id loaded from the player work struct.
+/// Episode I stores these as FX32 fixed-point integers; Episode II stores the
+/// speeds as plain floats, so they can be read directly.
+/// <para>
+/// Characters 0 and 1 are physically identical bar one slope field, and both have
+/// a Super mode. Character 2 has no Super — its mode 1 repeats its normal values —
+/// which is what you would expect of Metal Sonic. Modes 0 to 6 match Episode I's
+/// character enumeration in order and in value; modes 7 and 8 are heavily slowed
+/// variants with no Episode I counterpart, and 9 and 10 are not identified.
+/// </para>
 /// <para>
 /// The table was found by searching for Episode I's jump impulse — 23130 in FX32
 /// is {JUMP} as a float — immediately followed by its gravity,
 /// {GRAVITY}. What confirms it is four integers Episode II did not
 /// change and that no float search would have surfaced: <c>BreathFrames</c> 1800,
 /// <c>InvincibleFrames</c> 180, <c>PoolMax</c> 96 and <c>CoyoteFrames</c> 24, packed
-/// as <c>u16</c> pairs where Episode I used four <c>int</c>s. Four of the seven
+/// as <c>u16</c> pairs where Episode I used four <c>int</c>s. Four of the mode
 /// jump impulses match Episode I to the bit; the rest Episode II retuned.
 /// </para>
 /// <para>
@@ -181,14 +203,24 @@ public readonly record struct PlayerPhysics(
     /// <summary>World units per game pixel, for converting the values above.</summary>
     public static float WorldPerPixel => StageAssembler.CellSize / PixelsPerCell;
 
-    /// <summary>Every mode, indexed as Episode I indexes its character ids.</summary>
+    /// <summary>Characters in the table.</summary>
+    public const int CharacterCount = {CHARACTER_COUNT};
+
+    /// <summary>Modes per character.</summary>
+    public const int ModeCount = {MODE_COUNT};
+
+    /// <summary>Every row, character-major.</summary>
     public static readonly PlayerPhysics[] All =
     {{
 {rows_src}
     }};
 
+    /// <summary>One row.</summary>
+    public static PlayerPhysics For(int character, int mode) =>
+        All[character * ModeCount + mode];
+
     /// <summary>Ordinary Sonic — the row the stage scene uses.</summary>
-    public static PlayerPhysics Sonic => All[0];
+    public static PlayerPhysics Sonic => For(0, 0);
 }}
 '''
     open(path, "w", encoding="utf-8").write(src)
@@ -212,11 +244,13 @@ def main(argv=None) -> int:
 
     address = image.va(start)
     rows = read_rows(image, start)
-    print(f"player parameter table at {address:#010x}, "
-          f"{ROW_COUNT} rows of {ROW_STRIDE} bytes")
+    print(f"player parameter table at {address:#010x}: "
+          f"{CHARACTER_COUNT} characters x {MODE_COUNT} modes, "
+          f"rows of {ROW_STRIDE} bytes, character stride {CHARACTER_STRIDE}")
     for row in rows:
-        print(f"  {row['character']:13s} accel {row['GroundAcceleration']:.5f}  "
-              f"top {row['TopSpeed']:5.2f}  jump {row['JumpImpulse']:.4f}  "
+        print(f"  char {row['character']} {row['mode']:13s} "
+              f"accel {row['GroundAcceleration']:.5f}  "
+              f"top {row['TopSpeed']:6.3f}  jump {row['JumpImpulse']:.4f}  "
               f"gravity {row['Gravity']:.5f}  coyote {row['CoyoteFrames']}")
 
     if args.json:
