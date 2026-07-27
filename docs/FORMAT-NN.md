@@ -98,7 +98,14 @@ decimal places. A misaligned read would not produce that relationship.
 
 Model complexity spans what you would expect: the floor is 1 material, 1 vertex
 list, 1 node; the Hopper badnik is 27 vertex lists across **62 nodes at depth 8
-with 35 matrix palettes**, i.e. a skinned skeleton. 846 models are skinned.
+with 35 matrix palettes**, i.e. a skinned skeleton. 839 models are skinned.
+
+"Skinned" here means *geometry* driven by a node tree deeper than one level.
+Excluding locators matters: seven camera rigs — `CAMERA_POS`,
+`WM_CAMERA_PERSPECTIVE`, `WM_CAMERA_ORTHO` — have 2 or 3 nodes at depth 2 with no
+vertices at all, so a test on node depth alone counts them as skinned and gives
+846. This was found by the C# port disagreeing with the Python tools by exactly
+seven.
 
 Across all models: 10,138 nodes, 9,767 materials, 7,795 vertex lists and 11,564
 primitive lists.

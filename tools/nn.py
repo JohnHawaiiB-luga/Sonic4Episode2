@@ -161,8 +161,14 @@ class NnObject:
 
     @property
     def is_skinned(self) -> bool:
-        """A node tree deeper than one level means a real skeleton."""
-        return self.n_node > 1 and self.max_node_depth > 1
+        """A model with geometry driven by a node tree deeper than one level.
+
+        Geometry is part of the definition on purpose. Seven camera rigs -
+        `CAMERA_POS`, `WM_CAMERA_PERSPECTIVE`, `WM_CAMERA_ORTHO` - are locators
+        with 2 or 3 nodes at depth 2, so a test on node depth alone counts them
+        as skinned when they have no vertices to skin.
+        """
+        return self.n_node > 1 and self.max_node_depth > 1 and not self.is_locator
 
     @property
     def is_locator(self) -> bool:

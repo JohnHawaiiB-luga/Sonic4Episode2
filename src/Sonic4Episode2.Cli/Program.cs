@@ -8,7 +8,8 @@ using Sonic4Episode2.Core.Assets;
 
 if (args.Length < 2)
 {
-    Console.Error.WriteLine("usage: verify <game-root>");
+    Console.Error.WriteLine("usage: verify <game-root>     archives");
+    Console.Error.WriteLine("       models <game-root>     NN containers, geometry, materials");
     Console.Error.WriteLine("       grids  <act-archive.AMB>");
     return 2;
 }
@@ -19,9 +20,93 @@ string target = args[1];
 return command switch
 {
     "verify" => VerifyArchives(target),
+    "models" => VerifyModels(target),
     "grids" => ShowGrids(target),
     _ => Fail($"unknown command '{command}'"),
 };
+
+static int VerifyModels(string root)
+{
+    if (!Directory.Exists(root))
+        return Fail($"no such directory: {root}");
+
+    int containers = 0, containerFails = 0;
+    int models = 0, locators = 0, modelFails = 0, skinned = 0;
+    int motions = 0, channels = 0;
+    long vertices = 0, triangles = 0;
+    int textureRefs = 0, textureBound = 0;
+    var failures = new List<string>();
+
+    foreach (var path in Directory.EnumerateFiles(root, "*.amb", SearchOption.AllDirectories))
+    {
+        AmbArchive archive;
+        try { archive = AmbArchive.Load(path); }
+        catch (Exception ex) when (ex is AmbException or IOException) { continue; }
+
+        foreach (var entry in archive.Entries)
+        {
+            string ext = Path.GetExtension(entry.Name).ToUpperInvariant();
+            if (ext is not (".ZNO" or ".ZNM" or ".ZNV" or ".XNM")) continue;
+
+            var bytes = archive.Read(entry);
+            try
+            {
+                var file = NnFile.Parse(bytes);
+                containers++;
+
+                if (ext is ".ZNM" or ".XNM")
+                {
+                    var motion = file.ReadMotion();
+                    if (motion is not null)
+                    {
+                        var (header, list) = motion.Value;
+                        if (header.FrameRate is <= 0 or > 240)
+                            throw new NnException($"implausible frame rate {header.FrameRate}");
+                        if (header.End < header.Start)
+                            throw new NnException("end frame precedes start frame");
+                        motions++;
+                        channels += list.Count;
+                    }
+                    continue;
+                }
+                if (ext != ".ZNO") continue;
+
+                var model = NnModel.Load(bytes);
+                if (model is null) continue;
+                if (model.Header.IsLocator) { locators++; models++; continue; }
+
+                triangles += model.CountTriangles();
+                vertices += model.CountVertices();
+                if (model.Header.IsSkinned) skinned++;
+
+                foreach (var mesh in model.MeshSets)
+                {
+                    int? index = mesh.MaterialIndex >= 0 && mesh.MaterialIndex < model.Materials.Count
+                        ? model.Materials[mesh.MaterialIndex].TextureIndex
+                        : null;
+                    if (index is null) continue;
+                    textureRefs++;
+                    if (index >= 0 && index < model.TextureNames.Count) textureBound++;
+                }
+                models++;
+            }
+            catch (Exception ex) when (ex is NnException or AmbException or ArgumentOutOfRangeException)
+            {
+                if (ext == ".ZNO") modelFails++; else containerFails++;
+                if (failures.Count < 8) failures.Add($"{Path.GetFileName(path)}::{entry.Name}: {ex.Message}");
+            }
+        }
+    }
+
+    Console.WriteLine($"{containers} NN containers parsed, {containerFails} failed");
+    Console.WriteLine($"{models} models ({locators} locators, {skinned} skinned), {modelFails} failed");
+    Console.WriteLine($"{vertices:N0} vertices and {triangles:N0} triangles extracted");
+    Console.WriteLine($"{motions} motions carrying {channels:N0} channels");
+    Console.WriteLine($"{textureBound}/{textureRefs} mesh texture bindings resolve");
+    foreach (var failure in failures)
+        Console.Error.WriteLine($"  ! {failure}");
+    return modelFails == 0 && containerFails == 0 ? 0 : 1;
+}
 
 static int Fail(string message)
 {

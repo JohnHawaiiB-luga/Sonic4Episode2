@@ -113,10 +113,10 @@ task count, and are deliberately pessimistic.
 |-------|-------:|-----:|-------------:|
 | 1. Asset formats | 12% | ~85% | 10.2% |
 | 2. Geometry, audio, shaders | 18% | ~90% | 16.2% |
-| 3. Engine port | 20% | ~8% | 1.6% |
+| 3. Engine port | 20% | ~15% | 3.0% |
 | 4. Game logic | 35% | 0% | 0% |
 | 5. Mobile targets | 15% | ~3% | 0.5% |
-| **Total** | | | **≈ 28%** |
+| **Total** | | | **≈ 30%** |
 
 **Runnable code: 0%.** Nothing in this repository executes the game on any
 platform. That number moves off zero in phase 3, not before.
@@ -176,7 +176,8 @@ material struct) and motion playback (`NZMO` untouched).
       dependency) + `Sonic4Episode2.Cli` harness, building clean
 - [x] AMB and stage grids ported to C# and **cross-verified against the Python
       tools** - identical counts across 1,614 archives
-- [ ] Port the remaining asset readers (NN, DDS, materials, motions)
+- [x] NN container, geometry, nodes, materials, motions ported and cross-verified
+- [ ] Port the DDS decoder and the stage assembler
 - [ ] Stand up the platform heads (desktop first)
 - [ ] Port the Episode I `Am*` / `Nn*` engine layer, adapting the file system and
       binding layer to the Episode II data set
