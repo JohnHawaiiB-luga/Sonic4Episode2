@@ -10,6 +10,7 @@ if (args.Length < 2)
 {
     Console.Error.WriteLine("usage: verify <game-root>     archives");
     Console.Error.WriteLine("       models <game-root>     NN containers, geometry, materials");
+    Console.Error.WriteLine("       textures <game-root>   DDS decoding");
     Console.Error.WriteLine("       grids  <act-archive.AMB>");
     return 2;
 }
@@ -21,9 +22,51 @@ return command switch
 {
     "verify" => VerifyArchives(target),
     "models" => VerifyModels(target),
+    "textures" => VerifyTextures(target),
     "grids" => ShowGrids(target),
     _ => Fail($"unknown command '{command}'"),
 };
+
+static int VerifyTextures(string root)
+{
+    if (!Directory.Exists(root))
+        return Fail($"no such directory: {root}");
+
+    int ok = 0, bad = 0;
+    var formats = new Dictionary<string, int>();
+    var failures = new List<string>();
+
+    foreach (var path in Directory.EnumerateFiles(root, "*.amb", SearchOption.AllDirectories))
+    {
+        AmbArchive archive;
+        try { archive = AmbArchive.Load(path); }
+        catch (Exception ex) when (ex is AmbException or IOException) { continue; }
+
+        foreach (var entry in archive.Entries)
+        {
+            if (!entry.Name.EndsWith(".DDS", StringComparison.OrdinalIgnoreCase)) continue;
+            try
+            {
+                var texture = DdsTexture.Parse(archive.Read(entry).Span);
+                formats[texture.Format] = formats.GetValueOrDefault(texture.Format) + 1;
+                ok++;
+            }
+            catch (Exception ex) when (ex is DdsException or ArgumentOutOfRangeException)
+            {
+                bad++;
+                if (failures.Count < 8)
+                    failures.Add($"{Path.GetFileName(path)}::{entry.Name}: {ex.Message}");
+            }
+        }
+    }
+
+    Console.WriteLine($"{ok} textures decoded, {bad} failed");
+    foreach (var pair in formats.OrderByDescending(kv => kv.Value))
+        Console.WriteLine($"  {pair.Key,-7} {pair.Value}");
+    foreach (var failure in failures)
+        Console.Error.WriteLine($"  ! {failure}");
+    return bad == 0 ? 0 : 1;
+}
 
 static int VerifyModels(string root)
 {
