@@ -112,11 +112,11 @@ task count, and are deliberately pessimistic.
 | Phase | Weight | Done | Contribution |
 |-------|-------:|-----:|-------------:|
 | 1. Asset formats | 12% | ~80% | 9.6% |
-| 2. Geometry, audio, shaders | 18% | ~55% | 9.9% |
+| 2. Geometry, audio, shaders | 18% | ~65% | 11.7% |
 | 3. Engine port | 20% | 0% | 0% |
 | 4. Game logic | 35% | 0% | 0% |
 | 5. Mobile targets | 15% | 0% | 0% |
-| **Total** | | | **≈ 20%** |
+| **Total** | | | **≈ 22%** |
 
 **Runnable code: 0%.** Nothing in this repository executes the game on any
 platform. That number moves off zero in phase 3, not before.
@@ -164,8 +164,10 @@ Gate: every byte of every archive is accounted for by a decoder or an explicit
       prove it early rather than assuming it
 - [ ] `SOUND/` — identify the CRI middleware containers and decode
 
-Gate: a viewer that renders one Episode II model with its texture and plays one
-motion, sourced from the original archives.
+Gate: **partially met.** Whole stages assemble from original archives and render
+correctly — 17,526 tiles for Zone 1 Act 1, silhouette matching the tile grid.
+Still outstanding for the full gate: textures on the geometry (blocked on the
+material struct) and motion playback (`NZMO` untouched).
 
 ### Phase 3 — Engine port
 

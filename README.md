@@ -14,6 +14,8 @@ Early, but the foundations are real. Every number below is verified against the
  - Object placement — **65/65** `.EV` files
  - Texture banks — **651/651**, every texture name resolving to a real DDS
  - Tile ids to 3D models — **13/13** act maps index cleanly into their tileset
+ - Whole stages assemble — **17,526 tiles** instanced into 1.6M triangles for
+   Zone 1 Act 1, and the orthographic render matches the tile grid's silhouette
  - Nothing playable yet. No engine, no game code, don't get excited.
 
 Tools are Python with zero dependencies. `stagemap.py` renders layers to PNG,
@@ -77,6 +79,8 @@ advantage and I'm not going to pretend otherwise.
 | `tools/amb.py` | AMB archive reader — list, extract, bulk unpack, verify |
 | `tools/stagemap.py` | stage grids, object placement, tileset resolution, PNG previews |
 | `tools/txb.py` | texture banks |
+| `tools/nn.py` | SEGA NN models — containers, geometry, nodes, textures, OBJ export |
+| `tools/stageview.py` | assembles a whole stage from grid + models, OBJ and PNG |
 | `docs/` | format specifications, all marked VERIFIED / INFERRED / OPEN |
 | `plans/EXECPLAN.md` | the roadmap and why the PC build was chosen |
 
@@ -85,6 +89,8 @@ python tools/amb.py verify .
 python tools/stagemap.py render  G_ZONE1/MAP/ZONE11_MAP.AMB out/ --scale 2
 python tools/stagemap.py tileset G_ZONE1/MAP/ZONE11_MAP.AMB
 python tools/txb.py    list      G_ZONE1/MAP/ZONE1_T.AMB
+python tools/nn.py     export    G_ZONE1/MAP/ZONE1_M.AMB Z1_G_FL_A out/
+python tools/stageview.py        G_ZONE1/MAP/ZONE11_MAP.AMB out/ --layers _B
 ```
 
 # Issues
@@ -96,6 +102,19 @@ Tile ids don't point at sprites, they index a per-zone archive of ZNO models —
 not blitting tiles. Verified on all 13 act maps, and the histogram is exactly
 what you'd want: `Z1_G_FL_A.ZNO` (floor) placed 12,552 times, `Z1_G_HASIRA_B.ZNO`
 (柱, pillar) 2,458, walls after that.
+
+## Stages assemble, but without textures
+
+A grid cell is 20 world units, and models carry a fixed authored origin unrelated
+to where they end up — tile 32 sits at cells (98,0) through (98,5) reporting the
+same centre every time, because the tileset was laid out side by side in an
+authoring scene. So each model gets re-centred on its own bounding box before
+being placed. That produces a stage whose silhouette matches the tile grid
+exactly, which is the check that matters, but it is a reconstruction of the
+engine's transform rather than the transform itself.
+
+No textures yet either, because the material struct is still undecoded — see
+below.
 
 ## The renderer won't come for free
 
