@@ -219,5 +219,6 @@ Gate: Zone 1 Act 1 playable start to finish.
 - **Beta divergence.** This is Beta 8, not retail. Formats and content may differ
   from the shipped game; decoders should be tested against retail data before
   being called general.
-- **No .NET SDK on the current workstation.** Python tooling runs; C# work needs
-  an SDK installed first.
+- ~~No .NET SDK on the current workstation.~~ **Resolved** — .NET SDK 9.0.316
+  installed and smoke-tested, so phase 3 can begin whenever the asset work is
+  parked.
