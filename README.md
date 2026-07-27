@@ -18,6 +18,8 @@ Early, but the foundations are real. Every number below is verified against the
    Zone 1 Act 1, and the orthographic render matches the tile grid's silhouette
  - Shaders — **1843/1843** parse as clean SM3.0, which is what makes the mobile
    plan credible rather than hopeful
+ - Textures — **2853/2853** decode, and stages render **with their real
+   artwork**: Sylvania Castle comes out as sandstone, water and foliage
  - Nothing playable yet. No engine, no game code, don't get excited.
 
 Tools are Python with zero dependencies. `stagemap.py` renders layers to PNG,
@@ -84,6 +86,7 @@ advantage and I'm not going to pretend otherwise.
 | `tools/nn.py` | SEGA NN models — containers, geometry, nodes, textures, OBJ export |
 | `tools/stageview.py` | assembles a whole stage from grid + models, OBJ and PNG |
 | `tools/shader.py` | D3D9 shader bytecode — parse, verify, opcode census |
+| `tools/dds.py` | DXT1/3/5 and uncompressed DDS decoding, PNG export |
 | `docs/` | format specifications, all marked VERIFIED / INFERRED / OPEN |
 | `plans/EXECPLAN.md` | the roadmap and why the PC build was chosen |
 
@@ -106,7 +109,7 @@ not blitting tiles. Verified on all 13 act maps, and the histogram is exactly
 what you'd want: `Z1_G_FL_A.ZNO` (floor) placed 12,552 times, `Z1_G_HASIRA_B.ZNO`
 (柱, pillar) 2,458, walls after that.
 
-## Stages assemble, but without textures
+## Stages assemble, now with textures
 
 A grid cell is 20 world units, and models carry a fixed authored origin unrelated
 to where they end up — tile 32 sits at cells (98,0) through (98,5) reporting the
@@ -116,8 +119,9 @@ being placed. That produces a stage whose silhouette matches the tile grid
 exactly, which is the check that matters, but it is a reconstruction of the
 engine's transform rather than the transform itself.
 
-No textures yet either, because the material struct is still undecoded — see
-below.
+Textures work now. The binding runs mesh set → material → an optional pointer at
+`+0x18` → an index into the model's texture list, verified on 9,431 of 9,431
+materials. A textured region of Act 1 resolves 240,041 of 240,041 triangles.
 
 ## The renderer won't come for free
 

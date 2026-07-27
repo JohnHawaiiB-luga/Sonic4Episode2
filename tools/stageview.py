@@ -28,6 +28,7 @@ import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import amb  # noqa: E402
+import dds  # noqa: E402
 import nn  # noqa: E402
 import stagemap  # noqa: E402
 
@@ -41,15 +42,17 @@ LAYER_DEPTH = {
 
 
 class Mesh:
-    __slots__ = ("positions", "triangles")
+    __slots__ = ("positions", "uvs", "triangles", "tri_texture")
 
     def __init__(self):
         self.positions: list[tuple[float, float, float]] = []
+        self.uvs: list[tuple[float, float]] = []
         self.triangles: list[tuple[int, int, int]] = []
+        self.tri_texture: list[str] = []
 
 
 def model_mesh(data: bytes) -> Mesh | None:
-    """Geometry of one model, re-centred on its bounding box."""
+    """Geometry of one model, re-centred on its bounding box, with textures."""
     f = nn.parse(data)
     obj = nn.read_object(data, f)
     if obj is None or obj.is_locator:
@@ -57,21 +60,62 @@ def model_mesh(data: bytes) -> Mesh | None:
     vlists = nn.read_vertex_lists(data, obj)
     plists = nn.read_primitive_lists(data, obj)
     meshsets = nn.read_meshsets(data, obj)
+    try:
+        materials = nn.read_materials(data, f, obj)
+        textures = nn.read_textures(data, f)
+    except nn.NnError:
+        materials, textures = [], []
 
     cx, cy, cz = obj.center
     mesh = Mesh()
     for ms in meshsets:
         if not (0 <= ms.i_vtxlist < len(vlists) and 0 <= ms.i_primlist < len(plists)):
             continue
+        # mesh set -> material -> texture map -> NZTL name
+        name = ""
+        if 0 <= ms.i_material < len(materials):
+            index = materials[ms.i_material].texture_index
+            if index is not None and index < len(textures):
+                name = textures[index].name
+        vl = vlists[ms.i_vtxlist]
         base = len(mesh.positions)
-        for x, y, z in vlists[ms.i_vtxlist].positions():
+        for x, y, z in vl.positions():
             mesh.positions.append((x - cx, y - cy, z - cz))
+        uvs = vl.texcoords()
+        for i in range(vl.count):
+            mesh.uvs.append(uvs[i] if i < len(uvs) else (0.0, 0.0))
         for a, b, c in plists[ms.i_primlist].triangles():
             mesh.triangles.append((base + a, base + b, base + c))
+            mesh.tri_texture.append(name)
     return mesh if mesh.positions else None
 
 
-def assemble(act_archive: str, layers: list[str], tileset: str | None = None):
+def load_zone_textures(act_archive: str) -> dict:
+    """Decode every DDS in the zone's texture archives, keyed by upper name."""
+    directory = os.path.dirname(os.path.abspath(act_archive))
+    out = {}
+    for entry in sorted(os.listdir(directory)):
+        if not entry.upper().endswith(("_T.AMB", "_TEX.AMB")):
+            continue
+        try:
+            archive = amb.load(os.path.join(directory, entry))
+        except Exception:
+            continue
+        for item in archive:
+            if not item.name.upper().endswith(".DDS"):
+                continue
+            label = item.name.replace(chr(92), "/").rsplit("/", 1)[-1].upper()
+            if label in out:
+                continue
+            try:
+                out[label] = dds.parse(archive.read(item))
+            except dds.DdsError:
+                pass
+    return out
+
+
+def assemble(act_archive: str, layers: list[str], tileset: str | None = None,
+             region: tuple[int, int, int, int] | None = None):
     """Instance every tile of the chosen layers, returning combined geometry."""
     tileset = tileset or stagemap.find_tileset(act_archive)
     if not tileset:
@@ -81,9 +125,12 @@ def assemble(act_archive: str, layers: list[str], tileset: str | None = None):
 
     cache: dict[int, Mesh | None] = {}
     positions: list[tuple[float, float, float]] = []
+    uvs: list[tuple[float, float]] = []
     triangles: list[tuple[int, int, int]] = []
     tri_tile: list[int] = []
+    tri_texture: list[str] = []
     placed = skipped = 0
+    rx, ry, rw, rh = region if region else (0, 0, 1 << 30, 1 << 30)
 
     for label, grid in grids.items():
         stem = os.path.splitext(label)[0]
@@ -95,7 +142,11 @@ def assemble(act_archive: str, layers: list[str], tileset: str | None = None):
         depth = LAYER_DEPTH.get(suffix, 0.0)
 
         for y in range(grid.height):
+            if not (ry <= y < ry + rh):
+                continue
             for x in range(grid.width):
+                if not (rx <= x < rx + rw):
+                    continue
                 raw = grid[x, y]
                 if not raw:
                     continue
@@ -116,11 +167,13 @@ def assemble(act_archive: str, layers: list[str], tileset: str | None = None):
                 base = len(positions)
                 for px, py, pz in mesh.positions:
                     positions.append((px + ox, py + oy, pz + depth))
-                for a, b, c in mesh.triangles:
+                uvs.extend(mesh.uvs)
+                for ti, (a, b, c) in enumerate(mesh.triangles):
                     triangles.append((base + a, base + b, base + c))
                     tri_tile.append(tid)
+                    tri_texture.append(mesh.tri_texture[ti] if ti < len(mesh.tri_texture) else "")
                 placed += 1
-    return positions, triangles, tri_tile, placed, skipped, tileset
+    return positions, uvs, triangles, tri_tile, tri_texture, placed, skipped, tileset
 
 
 def _png(path: str, width: int, height: int, rgb: bytearray) -> None:
@@ -146,8 +199,13 @@ def _tile_colour(tid: int) -> tuple[int, int, int]:
     return (70 + (h & 0x7F), 70 + ((h >> 8) & 0x7F), 70 + ((h >> 16) & 0x7F))
 
 
-def render_ortho(positions, triangles, tri_tile, path: str, width: int = 1600) -> None:
-    """Project down Z and rasterise filled triangles — the platformer's own view."""
+def render_ortho(positions, uvs, triangles, tri_tile, tri_texture, textures,
+                 path: str, width: int = 1600) -> None:
+    """Project down Z and rasterise, sampling each triangle's texture.
+
+    Perspective correction is unnecessary here: the projection is orthographic,
+    so barycentric interpolation of the texture coordinates is exact.
+    """
     xs = [p[0] for p in positions]
     ys = [p[1] for p in positions]
     minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
@@ -163,6 +221,7 @@ def render_ortho(positions, triangles, tri_tile, path: str, width: int = 1600) -
     def project(p):
         return ((p[0] - minx) * scale, (maxy - p[1]) * scale, p[2])
 
+    have_uv = len(uvs) == len(positions)
     for ti, tri in enumerate(triangles):
         pts = [project(positions[i]) for i in tri]
         z = sum(p[2] for p in pts) / 3.0
@@ -176,21 +235,13 @@ def render_ortho(positions, triangles, tri_tile, path: str, width: int = 1600) -
         area = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
         if abs(area) < 1e-12:
             continue
-        # Lambert shading off the true face normal, so surfaces facing different
-        # ways read as different — flat shading makes the stage unreadable.
-        ax, ay, az = positions[tri[0]]
-        bx, by, bz = positions[tri[1]]
-        cx3, cy3, cz3 = positions[tri[2]]
-        ux, uy, uz = bx - ax, by - ay, bz - az
-        vx, vy, vz = cx3 - ax, cy3 - ay, cz3 - az
-        nx, ny, nz = uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx
-        length = (nx * nx + ny * ny + nz * nz) ** 0.5 or 1.0
-        # Light from front-left-above.
-        lambert = abs((nx * -0.35 + ny * 0.45 + nz * 0.82) / length)
-        # Colour identifies which tile a surface came from; lambert keeps edges
-        # and non-flat detail visible on top of it.
-        cr, cg, cb = _tile_colour(tri_tile[ti] if ti < len(tri_tile) else 0)
-        k = 0.55 + 0.45 * lambert
+
+        tex = textures.get(tri_texture[ti].upper()) if ti < len(tri_texture) else None
+        fallback = _tile_colour(tri_tile[ti] if ti < len(tri_tile) else 0)
+        t0 = t1 = t2 = None
+        if tex is not None and have_uv:
+            t0, t1, t2 = uvs[tri[0]], uvs[tri[1]], uvs[tri[2]]
+
         for py in range(lo_y, hi_y + 1):
             for px in range(lo_x, hi_x + 1):
                 cx, cy = px + 0.5, py + 0.5
@@ -202,10 +253,17 @@ def render_ortho(positions, triangles, tri_tile, path: str, width: int = 1600) -
                 if z >= depth[idx]:
                     continue
                 depth[idx] = z
+                if t0 is not None:
+                    w2 = 1.0 - w0 - w1
+                    u = t0[0] * w2 + t1[0] * w1 + t2[0] * w0
+                    v = t0[1] * w2 + t1[1] * w1 + t2[1] * w0
+                    cr, cg, cb = tex.rgb_at(u, v)
+                else:
+                    cr, cg, cb = fallback
                 o = idx * 3
-                rgb[o] = min(255, int(cr * k))
-                rgb[o + 1] = min(255, int(cg * k))
-                rgb[o + 2] = min(255, int(cb * k))
+                rgb[o] = cr
+                rgb[o + 1] = cg
+                rgb[o + 2] = cb
     _png(path, width, height, rgb)
 
 
@@ -218,11 +276,20 @@ def main(argv=None) -> int:
                     help="comma separated layer suffixes, e.g. _B,_A (default _B)")
     ap.add_argument("--width", type=int, default=1600)
     ap.add_argument("--no-obj", action="store_true")
+    ap.add_argument("--no-textures", action="store_true")
+    ap.add_argument("--region", help="x,y,w,h in grid cells")
     args = ap.parse_args(argv)
 
+    region = None
+    if args.region:
+        parts = [int(v) for v in args.region.split(",")]
+        if len(parts) != 4:
+            raise SystemExit("--region wants x,y,w,h")
+        region = tuple(parts)
+
     layers = [s for s in args.layers.split(",") if s] if args.layers != "all" else []
-    positions, triangles, tri_tile, placed, skipped, tileset = assemble(
-        args.archive, layers, args.tileset)
+    (positions, uvs, triangles, tri_tile, tri_texture,
+     placed, skipped, tileset) = assemble(args.archive, layers, args.tileset, region)
     print(f"{os.path.basename(args.archive)} -> {os.path.basename(tileset)}")
     print(f"{placed} tiles instanced, {skipped} skipped")
     print(f"{len(positions):,} vertices, {len(triangles):,} triangles")
@@ -243,7 +310,14 @@ def main(argv=None) -> int:
         print(f"  {obj_path}")
 
     png_path = os.path.join(args.dest, stem + ".png")
-    render_ortho(positions, triangles, tri_tile, png_path, args.width)
+    textures = {} if args.no_textures else load_zone_textures(args.archive)
+    if textures:
+        named = sum(1 for t in tri_texture if t)
+        hit = sum(1 for t in tri_texture if t and t.upper() in textures)
+        print(f"{len(textures)} zone textures loaded; "
+              f"{hit}/{named} textured triangles resolved")
+    render_ortho(positions, uvs, triangles, tri_tile, tri_texture, textures,
+                 png_path, args.width)
     print(f"  {png_path}")
     return 0
 
