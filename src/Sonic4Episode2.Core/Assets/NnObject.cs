@@ -269,17 +269,37 @@ public sealed record NnMeshSet(
 public sealed record NnNode(
     uint Flags, short MatrixIndex, short Parent, short Child, short Sibling,
     float TranslateX, float TranslateY, float TranslateZ,
+    int RotateX, int RotateY, int RotateZ,
     float ScaleX, float ScaleY, float ScaleZ)
 {
     public const int Size = 0x90;
 
+    /// <summary>
+    /// Rotation units in a full turn. Angles are stored as signed integers, not
+    /// floats — the A16 convention Episode I's <c>mtMathSin</c> uses.
+    /// </summary>
+    /// <remarks>
+    /// Sonic's skeleton settles it: of 327 rotation words 129 are non-zero, they
+    /// span -32768 to 19180, and the values that recur are 16384 and -32768 —
+    /// exactly a quarter and a half turn. Read as floats the same bytes are
+    /// denormals and NaNs.
+    /// </remarks>
+    public const int RotationUnitsPerTurn = 65536;
+
     public bool IsRoot => Parent == -1;
+
+    /// <summary>This node's rotation in radians.</summary>
+    public (float X, float Y, float Z) RotationRadians =>
+        (RotateX * MathF.Tau / RotationUnitsPerTurn,
+         RotateY * MathF.Tau / RotationUnitsPerTurn,
+         RotateZ * MathF.Tau / RotationUnitsPerTurn);
 
     public static NnNode Parse(ReadOnlySpan<byte> data, int at) => new(
         Le.U32(data, at),
         Le.I16(data, at + 0x04), Le.I16(data, at + 0x06),
         Le.I16(data, at + 0x08), Le.I16(data, at + 0x0A),
         Le.F32(data, at + 0x0C), Le.F32(data, at + 0x10), Le.F32(data, at + 0x14),
+        Le.I32(data, at + 0x18), Le.I32(data, at + 0x1C), Le.I32(data, at + 0x20),
         Le.F32(data, at + 0x24), Le.F32(data, at + 0x28), Le.F32(data, at + 0x2C));
 }
 

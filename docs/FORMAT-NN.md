@@ -332,6 +332,51 @@ y `[-4.68, 13.39]`, z `[-6.64, 12.31]` — centre `(0.00, 4.36, 2.84)`,
 half-extents `(3.88, 9.04, 9.48)`. Those two figures come from different regions
 of the file and match to two decimal places.
 
+## The node tree
+
+Every model carries a node array — 846 of the 3,577 have more than one — and a
+skinned model's vertices are authored against the pose it describes. Nothing can
+be drawn from a multi-node model without walking it.
+
+Each node is **144 bytes**, where Episode I's `NNS_NODE` is 112:
+
+```
++0x04  i16   matrix index
++0x06  i16   parent, -1 at the root
++0x08  i16   first child
++0x0A  i16   next sibling
++0x0C  f32   translate x, y, z
++0x18  i32   rotate x, y, z      (A16: 65536 = one turn)
++0x24  f32   scale x, y, z
+```
+
+### Rotation is integers, which is why it looked like padding
+
+`+0x18` through `+0x20` are **signed 32-bit integers in A16** — 65536 to a full
+turn, the convention Episode I's `mtMathSin` uses. Read as floats the same bytes
+come out as denormals and NaNs, and they had been skipped as padding on that
+basis.
+
+Sonic's skeleton settles it. Of 327 rotation words 129 are non-zero, they span
+-32768 to 19180, and the values that recur are **16384 and -32768** — exactly a
+quarter and a half turn, which is what a bind pose is made of. No float
+interpretation produces round numbers like that.
+
+### Walking it
+
+`NodeTransforms.World` composes scale, then rotation Z then Y then X, then
+translation, against the parent's matrix. Verified across the whole build:
+
+- **846 of 846** multi-node models have a well-formed tree — one root, every link
+  in range, no cycle reachable by walking parents.
+- **846 of 846** produce finite world transforms.
+- Sonic's 109 joints span **0 to 10.73 world units** in Y, feet at the origin,
+  against a model bounding box of 11.6 — a standing skeleton, right way up.
+
+Nodes are stored parents-before-children everywhere in this build, but that is an
+observation rather than a guarantee, so the walk falls back to a node's local
+transform when its parent has not been resolved yet.
+
 ## Still open
 
 - **The render-state block's contents.** The material's texture binding is
@@ -546,3 +591,4 @@ python tools/nn.py show   G_ZONE1/MAP/ZONE1_M.AMB Z1_G_FL_A
 python tools/nn.py verify .
 python tools/nn.py verify . --ext .ZNO
 ```
+
