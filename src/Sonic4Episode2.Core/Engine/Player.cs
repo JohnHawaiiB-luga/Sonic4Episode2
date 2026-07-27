@@ -55,6 +55,11 @@ public sealed class Player : GameObject
     public float AirAcceleration => _physics.AirAcceleration * _scale;
     public float AirSpeedMax => _physics.AirSpeedMax * _scale;
     public float AirDrag => _physics.AirDrag * _scale;
+    public float SlopeFactor => _physics.SlopeFactor * _scale;
+    public float SlopeSpeedMax => _physics.SlopeSpeedMax * _scale;
+
+    /// <summary>Ground angle under the player last frame, in degrees.</summary>
+    public float GroundAngle { get; private set; }
 
     public Vector2 Velocity;
     public bool OnGround { get; private set; }
@@ -78,7 +83,7 @@ public sealed class Player : GameObject
 
         if (InputX != 0f)
         {
-            Velocity.X += InputX * accel;
+            Velocity.X = SpeedUp(Velocity.X, InputX * accel, cap);
             FacingLeft = InputX < 0f;
         }
         else
@@ -89,7 +94,7 @@ public sealed class Player : GameObject
             Velocity.X -= MathF.Sign(Velocity.X) * drop;
         }
 
-        Velocity.X = Math.Clamp(Velocity.X, -cap, cap);
+        ApplySlope();
 
         // Edge-triggered so holding jump does not re-fire on landing.
         if (InputJump && !_jumpHeld && OnGround)
@@ -115,6 +120,46 @@ public sealed class Player : GameObject
     /// frame, which is <c>16384</c> in Episode I's fixed point.
     /// </summary>
     private float JumpCutThreshold => 4f * _scale;
+
+    /// <summary>
+    /// Lets the slope under the player pull it downhill.
+    /// </summary>
+    /// <remarks>
+    /// Episode I's form is <c>speed += slope_factor * sin(groundAngle)</c>, capped
+    /// at its own limit rather than the running one — which is why a slope can
+    /// carry you past top speed. A positive angle means the ground rises to the
+    /// right, so the term is subtracted: running right up a hill loses speed, and
+    /// running left down the same hill gains it, without branching on direction.
+    /// </remarks>
+    private void ApplySlope()
+    {
+        GroundAngle = 0f;
+        if (!OnGround) return;
+
+        float? angle = _collision.SurfaceAngleAt(Position.X, Position.Y);
+        if (angle is null) return;
+
+        GroundAngle = angle.Value;
+        Velocity.X = SpeedUp(Velocity.X,
+                             -SlopeFactor * MathF.Sin(angle.Value * MathF.PI / 180f),
+                             SlopeSpeedMax);
+    }
+
+    /// <summary>
+    /// Accelerates toward a limit without ever pulling a faster value back to it.
+    /// </summary>
+    /// <remarks>
+    /// This is Episode I's <c>ObjSpdUpSet</c>, and the asymmetry is the point. A
+    /// plain clamp would undo the slope term every frame, because running top
+    /// speed is 9 px/frame while the slope limit is 13 — the only way to exceed
+    /// the first is for the clamp to leave an already-higher speed alone.
+    /// </remarks>
+    private static float SpeedUp(float current, float add, float max)
+    {
+        if (add > 0f) return current >= max ? current : MathF.Min(current + add, max);
+        if (add < 0f) return current <= -max ? current : MathF.Max(current + add, -max);
+        return current;
+    }
 
     private void Move()
     {

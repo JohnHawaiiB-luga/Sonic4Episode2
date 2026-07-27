@@ -134,6 +134,13 @@ public sealed class CollisionShapes
     /// The stored byte runs the other way, because the grid's Y grows downward
     /// while the angle is measured against a world whose Y grows up.
     /// </remarks>
-    public float AngleDegrees(int attributeId, int cell) =>
-        -AngleUnits(attributeId, cell) * DegreesPerAngleUnit;
+    public float AngleDegrees(int attributeId, int cell)
+    {
+        float degrees = -AngleUnits(attributeId, cell) * DegreesPerAngleUnit;
+        // Wrap to [-180, 180) so a gentle rise reads as a small positive number
+        // rather than as something just under a full turn.
+        if (degrees < -180f) degrees += 360f;
+        if (degrees >= 180f) degrees -= 360f;
+        return degrees;
+    }
 }

@@ -103,3 +103,92 @@ public class PlayerPhysicsTests
         return Core.Assets.StageGrid.Parse("test", data);
     }
 }
+
+public class SlopeTests
+{
+    /// <summary>
+    /// A long strip of solid ground where every cell carries the given `.DI`
+    /// angle byte. It has to be long: at top speed the player crosses a cell every
+    /// seven frames, and running off the end would go airborne and stop the slope
+    /// applying at all.
+    /// </summary>
+    private static CollisionMap Sloped(byte angleUnits)
+    {
+        const int width = 512, height = 4;
+        var grid = new byte[4 + width * height * 2];
+        grid[0] = (byte)(width & 0xFF); grid[1] = (byte)(width >> 8);
+        grid[2] = (byte)height;
+        for (int i = 0; i < width * height; i++) grid[4 + i * 2] = 1;
+
+        var angles = new byte[4 + CollisionShapes.CellsPerRecord + 4 * 2];
+        angles[0] = 4; angles[2] = 1;             // 4 chips, 1 record
+        for (int c = 0; c < CollisionShapes.CellsPerRecord; c++)
+            angles[4 + c] = angleUnits;
+
+        return CollisionMap.FromGrid(
+            StageGrid.Parse("test", grid), null,
+            CollisionShapes.Parse(angles, CollisionShapes.CellsPerRecord));
+    }
+
+    [Fact]
+    public void FlatGroundLeavesSpeedAlone()
+    {
+        var player = new Player(Sloped(0));
+        player.PlaceOnGround(10f, 0f);
+        player.Update();
+        float before = player.Velocity.X;
+        player.Update();
+        Assert.Equal(before, player.Velocity.X, precision: 5);
+        Assert.Equal(0f, player.GroundAngle);
+    }
+
+    [Fact]
+    public void GroundRisingToTheRightPushesThePlayerLeft()
+    {
+        // 32 units of 256 is a positive quarter-of-a-quarter turn: uphill to the
+        // right, so a resting player should start sliding back down it.
+        var player = new Player(Sloped(224));   // stored byte negates to +45 deg
+        player.PlaceOnGround(10f, 0f);
+        for (int i = 0; i < 4; i++) player.Update();
+        Assert.True(player.GroundAngle > 0f);
+        Assert.True(player.Velocity.X < 0f);
+    }
+
+    [Fact]
+    public void TheOppositeSlopePushesTheOtherWay()
+    {
+        var player = new Player(Sloped(32));    // -45 deg
+        player.PlaceOnGround(10f, 0f);
+        for (int i = 0; i < 4; i++) player.Update();
+        Assert.True(player.GroundAngle < 0f);
+        Assert.True(player.Velocity.X > 0f);
+    }
+
+    [Fact]
+    public void RunningDownhillCarriesYouPastRunningTopSpeed()
+    {
+        // The slope cap is 13 px/frame against a running cap of 9, which is the
+        // whole reason it is a separate limit.
+        var player = new Player(Sloped(32));
+        Assert.True(player.SlopeSpeedMax > player.MaxSpeed);
+
+        player.PlaceOnGround(10f, 0f);
+        player.InputX = 1f;
+        for (int i = 0; i < 900; i++) player.Update();
+
+        Assert.True(player.Velocity.X > player.MaxSpeed);
+        Assert.True(player.Velocity.X <= player.SlopeSpeedMax + 0.001f);
+    }
+
+    [Fact]
+    public void StandingStillOnASlopeDoesNotSlide()
+    {
+        // Deceleration is 0.125 px/frame and a 45 degree slope contributes
+        // 0.0625 * sin(45) = 0.044, so Episode II's tuning holds you in place.
+        // This is a fact about the recovered numbers, not a modelling choice.
+        var player = new Player(Sloped(32));
+        player.PlaceOnGround(10f, 0f);
+        for (int i = 0; i < 300; i++) player.Update();
+        Assert.True(MathF.Abs(player.Velocity.X) < 0.05f);
+    }
+}

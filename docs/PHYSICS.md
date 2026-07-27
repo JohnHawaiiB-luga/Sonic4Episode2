@@ -120,9 +120,26 @@ So the cut is a doubled gravity for the remainder of the rise, not a ceiling on
 it. Releasing at the very top of a jump does nothing at all, because the rise is
 already below the 4 px/frame threshold.
 
+## Slopes
+
+`SlopeFactor` and `SlopeSpeedMax` are wired in. Episode I's form is
+
+```
+ground speed += slope_factor * sin(ground angle)
+```
+
+capped at `SlopeSpeedMax`, which is a **separate and higher limit** than running
+top speed — 13 against 9. That is the only way a slope can carry you past top
+speed, and it only works because Episode I's `ObjSpdUpSet` never pulls an
+already-faster value back down to the limit. A plain clamp would undo the slope
+term every frame; `Player.SpeedUp` reproduces the asymmetry.
+
+A consequence of the recovered numbers worth knowing: **standing still on a 45
+degree slope does not make you slide.** Deceleration is 0.125 per frame and the
+slope contributes only `0.0625 * sin(45) = 0.044`, so friction wins. That is
+Episode II's tuning, not a shortcut in this port.
+
 ## Not yet used
 
 Recovered and sitting in the table unused: everything about spin dash and
-rolling, the slope factors, `push_max`, and the pinball row. The slope factors
-need `CollisionMap.SurfaceAngleAt` wired into ground movement, which is the next
-step and is the point of having decoded `.DI`.
+rolling, `push_max`, and the pinball row.
