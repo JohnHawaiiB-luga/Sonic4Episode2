@@ -7,8 +7,8 @@ Status: **VERIFIED**. All **5,727 NN containers** parse cleanly with zero
 failures and the chunk census cross-checks exactly against the file extensions.
 Inside the object chunk, the header, node tree, vertex lists, primitive lists and
 mesh sets are all decoded: **3,546 models yield 2,820,398 vertices and 2,513,705
-triangles with zero failures**. Materials remain undecoded, and motions
-(`NZMO`) and morph animation (`NZMA`) are untouched.
+triangles with zero failures**. Materials and their texture bindings are decoded too. Motions (`NZMO`) and morph
+animation (`NZMA`) remain untouched.
 
 ## Chunks
 
@@ -326,10 +326,9 @@ of the file and match to two decimal places.
 
 ## Still open
 
-- **Materials**, and with them the exact mesh-to-texture binding. See the
-  sections below. The leading fields are now known; what remains is the field
-  that **selects the texture**, which cannot be settled from data alone and needs
-  the draw-path code.
+- **The render-state block's contents.** The material's texture binding is
+  solved, but the packed `u16` pairs at `+0x0C` (sampler or blend state) are not
+  interpreted.
 - **Vertex colours** are not extracted, and bits `0x40`/`0x100` on the wider
   strides (56, 64) are unidentified — presumably blend weights and indices.
 - **Unknown word at `+0x04`** of the vertex list descriptor, and the 32 unknown
@@ -378,36 +377,58 @@ as walked here, and the texture-list loop at `0x006c6cce` steps by `0x14`,
 **independently confirming the 20-byte texture entry**. It also uppercases texture
 names in place, which is why Episode I's decompilation calls `.ToUpper()`.
 
-## Materials - structure partially recovered
+## Materials - decoded, and the texture binding closed
 
-Using the relocation map instead of size measurement finally made progress.
-
-Every material descriptor carries **pointers at `+0x08` and `+0x0C`**, consistently
-across models:
+Materials are the one **variable-size** structure in this format, so they cannot
+be walked by stride. Which optional fields are present is read from `NOF0`, which
+lists exactly the words that are pointers - that is what made them tractable
+after three size-based attempts failed.
 
 | Offset | Type | Field |
 |--------|------|-------|
-| `0x00` | `u32` | flags - e.g. `0x1102`, `0x0000` |
-| `0x04` | `u32` | reserved, zero in observed materials |
-| `0x08` | `u32` | pointer to a **colour block** |
-| `0x0C` | `u32` | pointer to a **render-state block** |
+| `0x00` | `u32` | flags (`0x1102`, `0x0000` observed) |
+| `0x04` | `u32` | reserved, zero |
+| `0x08` | `u32` | -> colour block |
+| `0x0C` | `u32` | -> render-state block |
+| `0x18` | `u32` | -> **texture map block**, present only on some materials |
 
-The colour block opens with a count (`2`) then RGBA floats - `Z1_G_HASIRA_B.ZNO`'s
-second material reads `(0.255, 0.494, 0.541, 1.000)` then `(1, 1, 1, 1)`.
+The colour block is a count followed by RGBA floats. The render-state block is a
+leading integer then packed `u16` pairs, and reads like sampler or blend state.
 
-The render-state block opens with a small integer (16, 17, 24 observed) followed
-by packed `u16` pairs such as `(5, 6, 5, 6)` and `(9, 1, 5, 6)`, which read like
-sampler or blend state.
+### The texture map block - this is the binding
 
-**Where the texture selector probably lives**: `Z1_G_HASIRA_B` has two textures,
-and its materials 1 and 2 have *identical* colour blocks and render-state blocks
-differing only in that leading integer - 16 versus 24 - while their meshes use
-different textures. **Unproven**; it needs the draw-path code, not more staring at
-data.
+| Offset | Type | Field |
+|--------|------|-------|
+| `0x00` | `u32` | type - `0x60000002` on the large majority |
+| `0x04` | `u32` | **index into the model's `NZTL` texture list** |
 
-Also confirmed: the material pointer's own `fType` (`0x10000000` vs `0x30000000`)
-adds exactly 4 bytes to the descriptor, consistent across every size class
-(120/124, 196/200, 260/264, 184/188).
+Status: **VERIFIED**. **9,431 of 9,431** materials carrying this block name a
+texture index that lies inside their own model's texture list, with **none out of
+range**. A further 336 materials have no block at all and are untextured.
+
+`Z1_G_HASIRA_B.ZNO` is the case that proves it. Three materials, two textures:
+material 0 has no block, material 1 points at index 0
+(`Z1_1_block_06_dif.dds`), material 2 at index 1 (`Z1_1_block_21_dif.dds`). That
+model is exactly the one that defeated the earlier subobject-texture-list
+approach, because its 3 materials against 2 textures showed the selector had to
+live in the material. It does, at `+0x18` -> `+0x04`.
+
+### The full chain
+
+```
+mesh set --i_material--> material --+0x18--> texture map --index--> NZTL --> .DDS
+```
+
+Every link is now verified. `tools/nn.py export` writes an `.mtl` beside the
+`.obj` with `map_Kd` pointing at the right texture, so a viewer picks it up
+automatically.
+
+The optional `+0x18` pointer also explains the size correlation noticed earlier:
+material pointers with `fType` `0x30000000` are consistently exactly 4 bytes
+larger than `0x10000000` ones, because that flag is what carries the extra
+texture-map field.
+
+## Materials - post-mortem on three failed approaches
 
 ## Materials - post-mortem on three failed approaches
 

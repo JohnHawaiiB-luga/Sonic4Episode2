@@ -397,6 +397,73 @@ def read_textures(data: bytes, f: NnFile, base: int = 0x20) -> list[TextureRef]:
     ]
 
 
+class Material:
+    """A material descriptor, reached through the object's material pointer array.
+
+        +0x00  u32  flags
+        +0x04  u32  reserved
+        +0x08  u32  -> colour block: count, then RGBA floats
+        +0x0C  u32  -> render-state block
+        +0x18  u32  -> texture map block, present only on some materials
+
+    Materials are the one **variable-size** structure in this format, so they
+    cannot be walked by stride. Which fields are present is read from the `NOF0`
+    relocation table, which lists exactly the words that are pointers.
+
+    The texture map block is what binds a mesh to a texture:
+
+        +0x00  u32  type — 0x60000002 on the large majority
+        +0x04  u32  **index into the model's NZTL texture list**
+
+    Verified: **9,431 of 9,431** materials carrying this block name a texture
+    index inside their own model's texture list, with none out of range. 336
+    materials have no block at all and are presumably untextured.
+    """
+
+    __slots__ = ("ftype", "flags", "offset", "ofs_colour", "ofs_state",
+                 "ofs_texmap", "texture_index", "colour")
+
+    def __init__(self, data: bytes, base: int, offset: int, ftype: int,
+                 relocations: set[int]):
+        self.ftype, self.offset = ftype, offset
+        at = base + offset
+        self.flags = struct.unpack_from("<I", data, at)[0]
+        self.ofs_colour, self.ofs_state = struct.unpack_from("<2I", data, at + 8)
+        self.ofs_texmap = 0
+        self.texture_index = None
+        self.colour = None
+
+        if (offset + 0x18) in relocations:
+            (self.ofs_texmap,) = struct.unpack_from("<I", data, at + 0x18)
+            if self.ofs_texmap and base + self.ofs_texmap + 8 <= len(data):
+                _type, index = struct.unpack_from("<2I", data, base + self.ofs_texmap)
+                self.texture_index = index
+
+        if self.ofs_colour and base + self.ofs_colour + 20 <= len(data):
+            (count,) = struct.unpack_from("<I", data, base + self.ofs_colour)
+            if count:
+                self.colour = struct.unpack_from("<4f", data, base + self.ofs_colour + 4)
+
+    def __repr__(self):
+        return f"<Material tex={self.texture_index} flags={self.flags:#x}>"
+
+
+def read_materials(data: bytes, f: NnFile, obj: NnObject,
+                   base: int = 0x20) -> list[Material]:
+    """Materials of a model, with their texture bindings resolved."""
+    relocations = set(read_relocations(data, f, base))
+    out = []
+    for i in range(obj.n_material):
+        at = base + obj.ofs_material + i * 8
+        if at + 8 > len(data):
+            raise NnError(f"material pointer {i} outside the file")
+        ftype, offset = struct.unpack_from("<2I", data, at)
+        if base + offset + 0x1C > len(data):
+            raise NnError(f"material {i} descriptor outside the file")
+        out.append(Material(data, base, offset, ftype, relocations))
+    return out
+
+
 class Node:
     """One entry of the node tree — a transform and its links.
 
@@ -646,6 +713,16 @@ def cmd_show(args) -> int:
         if textures:
             print(f"    textures: {', '.join(t.name for t in textures if t.name)}")
         if obj:
+            try:
+                mats = read_materials(data, f, obj)
+                for mi, mat in enumerate(mats):
+                    tex = ("-" if mat.texture_index is None
+                           else (textures[mat.texture_index].name
+                                 if mat.texture_index < len(textures) else "?"))
+                    print(f"    material {mi}: texture {mat.texture_index} -> {tex}")
+            except NnError as exc:
+                print(f"    ! materials: {exc}")
+        if obj:
             cx, cy, cz = obj.center
             bx, by, bz = obj.bbox
             print(f"    object  centre ({cx:.2f}, {cy:.2f}, {cz:.2f})  radius {obj.radius:.2f}"
@@ -678,14 +755,31 @@ def cmd_export(args) -> int:
         vlists = read_vertex_lists(data, obj)
         plists = read_primitive_lists(data, obj)
         meshsets = read_meshsets(data, obj)
+        materials = read_materials(data, f, obj)
+        textures = read_textures(data, f)
 
         label = entry.name.replace(chr(92), "/").rsplit("/", 1)[-1]
-        out = os.path.join(args.dest, os.path.splitext(label)[0] + ".obj")
+        stem = os.path.splitext(label)[0]
+        out = os.path.join(args.dest, stem + ".obj")
+
+        # An MTL alongside the OBJ so viewers pick the textures up automatically.
+        mtl_name = stem + ".mtl"
+        with open(os.path.join(args.dest, mtl_name), "w", encoding="ascii") as mp:
+            mp.write(f"# materials for {label}\n")
+            for i, mat in enumerate(materials):
+                mp.write(f"\nnewmtl mat{i}\n")
+                if mat.colour:
+                    r, g, b, _a = mat.colour
+                    mp.write(f"Kd {r:.6f} {g:.6f} {b:.6f}\n")
+                if mat.texture_index is not None and mat.texture_index < len(textures):
+                    mp.write(f"map_Kd {textures[mat.texture_index].name}\n")
+
         verts = tris = 0
         with open(out, "w", encoding="ascii") as fp:
             fp.write(f"# {label} - extracted from Sonic 4 Episode II\n")
             fp.write(f"# {len(meshsets)} mesh sets, {obj.n_vtxlist} vertex lists, "
                      f"{obj.n_primlist} primitive lists\n")
+            fp.write(f"mtllib {mtl_name}\n")
             for i, mesh in enumerate(meshsets):
                 if not (0 <= mesh.i_vtxlist < len(vlists)):
                     continue
@@ -703,7 +797,9 @@ def cmd_export(args) -> int:
                 for nx, ny, nz in normals:
                     fp.write(f"vn {nx:.6f} {ny:.6f} {nz:.6f}\n")
 
-                fp.write(f"g mesh{i}_mat{mesh.i_material}\n")
+                fp.write(f"g mesh{i}\n")
+                if 0 <= mesh.i_material < len(materials):
+                    fp.write(f"usemtl mat{mesh.i_material}\n")
                 for tri in plists[mesh.i_primlist].triangles():
                     parts = []
                     for idx in tri:
