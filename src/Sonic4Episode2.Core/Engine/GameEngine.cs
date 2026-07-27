@@ -34,11 +34,18 @@ public sealed class GameEngine
     public const int PriorityObject = ObjectCatalog.Priority;
     public const int PriorityCamera = 0x3000;
 
-    private readonly string _gameRoot;
+    private readonly IContentSource _content;
 
-    public GameEngine(string gameRoot)
+    /// <summary>Runs against an installed copy of the game on disk.</summary>
+    public GameEngine(string gameRoot) : this(new FileSystemContent(gameRoot)) { }
+
+    /// <summary>
+    /// Runs against any content source, which is how the mobile heads supply data
+    /// out of an APK or bundle rather than a filesystem.
+    /// </summary>
+    public GameEngine(IContentSource content)
     {
-        _gameRoot = gameRoot;
+        _content = content;
         Scheduler = new TaskScheduler();
         Objects = new ObjectManager();
 
@@ -101,20 +108,20 @@ public sealed class GameEngine
 
     private void EnterStage()
     {
-        string actPath = Path.Combine(_gameRoot, ActArchive);
-        var archive = AmbArchive.Load(actPath);
+        string actPath = ActArchive;
+        var archive = AmbArchive.Parse(_content.Read(actPath));
 
-        string? tilesetPath = FindTileset(actPath);
+        string? tilesetPath = FindTileset(actPath, _content);
         if (tilesetPath is null)
             throw new InvalidOperationException($"no tileset archive beside {actPath}");
 
-        var assembler = new StageAssembler(AmbArchive.Load(tilesetPath));
+        var assembler = new StageAssembler(AmbArchive.Parse(_content.Read(tilesetPath)));
         var batch = new StageBatch();
         var placements = new List<Placement>();
         var rings = new List<Ring>();
 
         // Ground shapes and their angles live in the zone's ATTR archive.
-        var (shapes, angles) = LoadShapes(actPath);
+        var (shapes, angles) = LoadShapes(actPath, _content);
         StageGrid? attributeGrid = null;
 
         foreach (var entry in archive.Entries)
@@ -159,7 +166,7 @@ public sealed class GameEngine
         Rings = rings;
         RingField = new RingField(rings);
         RingCount = 0;
-        StageName = Path.GetFileNameWithoutExtension(actPath);
+        StageName = NameOf(actPath);
         int identified = placements.Count(p => ObjectCatalog.IsKnown(p.ObjectId));
         Status = $"{assembler.TilesPlaced} tiles, {batch.VertexCount:N0} vertices, " +
                  $"{batch.TriangleCount:N0} triangles, " +
@@ -192,16 +199,16 @@ public sealed class GameEngine
     /// Reads the zone's height fields and surface angles, if the ATTR archive is
     /// there. Either may be absent; the map degrades rather than failing.
     /// </summary>
-    private static (CollisionShapes? Shapes, CollisionShapes? Angles) LoadShapes(string actPath)
+    private static (CollisionShapes? Shapes, CollisionShapes? Angles) LoadShapes(
+        string actPath, IContentSource content)
     {
-        string? directory = Path.GetDirectoryName(actPath);
-        if (directory is null) return (null, null);
+        string directory = DirectoryOf(actPath);
 
-        foreach (string file in Directory.EnumerateFiles(directory, "*_ATTR.AMB"))
+        foreach (string file in content.List(directory, "_ATTR.AMB"))
         {
             try
             {
-                var archive = AmbArchive.Load(file);
+                var archive = AmbArchive.Parse(content.Read(file));
                 CollisionShapes? shapes = null, angles = null;
                 foreach (var entry in archive.Entries)
                 {
@@ -258,12 +265,14 @@ public sealed class GameEngine
     /// <c>ZONE&lt;zone&gt;[&lt;tileset&gt;]_M</c>. Zones with one shared tileset
     /// omit the letter, which is why the plain form is tried as a fallback.
     /// </remarks>
-    public static string? FindTileset(string actPath)
-    {
-        string? directory = Path.GetDirectoryName(actPath);
-        if (directory is null) return null;
+    public static string? FindTileset(string actPath) =>
+        FindTileset(actPath, new FileSystemContent(""));
 
-        string name = Path.GetFileNameWithoutExtension(actPath);
+    /// <inheritdoc cref="FindTileset(string)"/>
+    public static string? FindTileset(string actPath, IContentSource content)
+    {
+        string directory = DirectoryOf(actPath);
+        string name = NameOf(actPath);
         if (!name.StartsWith("ZONE", StringComparison.OrdinalIgnoreCase)) return null;
 
         string body = name[4..].Replace("_MAP", "", StringComparison.OrdinalIgnoreCase);
@@ -276,9 +285,29 @@ public sealed class GameEngine
 
         foreach (string candidate in new[] { $"ZONE{zone}{tileset}_M.AMB", $"ZONE{zone}_M.AMB" })
         {
-            string path = Path.Combine(directory, candidate);
-            if (File.Exists(path)) return path;
+            string path = directory.Length == 0 ? candidate : $"{directory}/{candidate}";
+            if (content.Exists(path)) return path;
         }
         return null;
+    }
+
+    /// <summary>The directory part of a content path, or empty.</summary>
+    /// <remarks>
+    /// Content paths are always <c>/</c>-separated regardless of platform, so this
+    /// does not use <see cref="Path"/> — on Windows that would also split on a
+    /// backslash and quietly accept paths no content source can serve.
+    /// </remarks>
+    private static string DirectoryOf(string path)
+    {
+        int cut = path.LastIndexOf('/');
+        return cut < 0 ? "" : path[..cut];
+    }
+
+    /// <summary>The file name without its extension.</summary>
+    private static string NameOf(string path)
+    {
+        string name = path[(path.LastIndexOf('/') + 1)..];
+        int dot = name.LastIndexOf('.');
+        return dot < 0 ? name : name[..dot];
     }
 }

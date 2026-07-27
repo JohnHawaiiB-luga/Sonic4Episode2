@@ -113,9 +113,9 @@ task count, and are deliberately pessimistic.
 |-------|-------:|-----:|-------------:|
 | 1. Asset formats | 12% | ~95% | 11.4% |
 | 2. Geometry, audio, shaders | 18% | ~95% | 17.1% |
-| 3. Engine port | 20% | ~90% | 18.0% |
+| 3. Engine port | 20% | ~91% | 18.2% |
 | 4. Game logic | 35% | ~31% | 10.9% |
-| 5. Mobile targets | 15% | ~3% | 0.5% |
+| 5. Mobile targets | 15% | ~6% | 0.9% |
 | **Total** | | | **≈ 58%** |
 
 **Runnable: a playable slice.** You can run and jump on Zone 1 Act 1's real
@@ -224,6 +224,8 @@ Gate: Zone 1 Act 1 playable start to finish.
 
 ### Phase 5 — Mobile
 
+- [x] Get the core library off the filesystem - **all data access goes through
+      `IContentSource`, so an APK or bundle can serve it**
 - [ ] MonoGame Android and iOS heads
 - [ ] Touch input, since the original PC build assumes pad or keyboard
 - [ ] Performance and memory work against the 1.2 GB data set
