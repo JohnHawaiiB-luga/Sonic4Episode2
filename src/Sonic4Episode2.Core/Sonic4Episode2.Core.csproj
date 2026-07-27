@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net8.0 rather than net9.0: MonoGame's current release targets it, and
+         the Android and iOS heads will pin net8.0-android / net8.0-ios. This
+         library has to stay loadable from all of them.
+
+         There is deliberately no graphics dependency here. The asset layer must
+         be usable headless as well as from a game head, which is what makes it
+         testable against the whole 1.2 GB data set. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+</Project>

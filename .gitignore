@@ -11,3 +11,8 @@ __pycache__/
 /out/
 /extracted/
 /dump/
+
+# .NET build output
+bin/
+obj/
+*.user
