@@ -75,6 +75,45 @@ The relationship between a `.MP` layer and its `.MD` companion is **OPEN**. The
 space (28 distinct values), which is consistent with a per-cell variant, flip or
 animation selector, but this has not been proven.
 
+## Tile ids are 3D model indices
+
+A tile id is **an index into the zone's tileset archive**, which holds SEGA NN
+`.ZNO` models — not a sprite or an atlas region. Episode II's stages are grids of
+3D model instances.
+
+The tileset archive lives beside the act map:
+
+```
+ZONE<zone><act>[<tileset>]_MAP.AMB   ->   ZONE<zone>[<tileset>]_M.AMB
+```
+
+A zone with one shared tileset omits the letter. Zone 1 and the final zone use a
+single tileset; Zone 2 has three (A/B/C) and Zones 3 and 4 have two. Zone 3 act 3
+reuses tileset A rather than having its own.
+
+Status: **VERIFIED**. All 13 act maps index cleanly into their tileset, and in
+most cases the top id is exactly one below the model count:
+
+| Act map | Tileset archive | Models | Max id |
+|---------|-----------------|--------|--------|
+| `ZONE11_MAP` | `ZONE1_M.AMB` | 298 | 296 |
+| `ZONE12_MAP` | `ZONE1_M.AMB` | 298 | 297 |
+| `ZONE21A_MAP` | `ZONE2A_M.AMB` | 236 | 235 |
+| `ZONE23C_MAP` | `ZONE2C_M.AMB` | 138 | 137 |
+| `ZONE31A_MAP` | `ZONE3A_M.AMB` | 265 | 264 |
+| `ZONE42B_MAP` | `ZONE4B_M.AMB` | 284 | 283 |
+
+The model names confirm it semantically. Zone 1 Act 1 places `Z1_G_FL_A.ZNO`
+(floor) 12,552 times, `Z1_G_HASIRA_B.ZNO` (柱, pillar) 2,458 times, then walls
+and blocks. Zone 3 leads with `Z3_G_SND_B.ZNO` (sand), Zone 4 with
+`Z4_G_FL_A.ZNO`. That is the distribution a real level should have.
+
+Note that `_ATTR_*` layers use a **different id space** — ids run past 2,700,
+well beyond any tileset's model count — because they carry collision attributes
+rather than geometry references.
+
+`tools/stagemap.py tileset <act.AMB>` resolves an act's ids to model names.
+
 ## Dimensions vary per act
 
 Stage size is per-act, not fixed: Zone 1 Act 1 is 510 × 70 and Act 2 is 470 × 80.
