@@ -1,12 +1,14 @@
 # SEGA NN container format (`.ZNO` / `.ZNM` / `.ZNV`)
 
 Every model, skeletal animation and vertex animation in Episode II is a SEGA NN
-"BINCNK" file — a flat sequence of tagged chunks. This is the container only;
-the geometry *inside* `NZOB` is not yet decoded.
+"BINCNK" file — a flat sequence of tagged chunks.
 
-Status: **VERIFIED**. All **5,727 NN containers** in the build parse cleanly with
-zero failures, and the chunk census cross-checks exactly against the file
-extensions.
+Status: **VERIFIED**. All **5,727 NN containers** parse cleanly with zero
+failures and the chunk census cross-checks exactly against the file extensions.
+Inside the object chunk, the header, node tree, vertex lists, primitive lists and
+mesh sets are all decoded: **3,546 models yield 2,820,398 vertices and 2,513,705
+triangles with zero failures**. Materials remain undecoded, and motions
+(`NZMO`) and morph animation (`NZMA`) are untouched.
 
 ## Chunks
 
