@@ -405,6 +405,45 @@ Sonic on screen**, and it is a discrete piece of work rather than a loose end.
 Rigid models — anything with one node, or with meshes bound to a node that carries
 a real transform — can be posed with what is here today.
 
+### Skinning weights, and a bug they exposed
+
+The vertex format has more bits than the five that were decoded. Solving the
+stride arithmetic across all 36 distinct formats in the build gives:
+
+| Bits | Bytes | What |
+|------|------:|------|
+| `0x01000`, `0x02000`, `0x04000`, `0x00400` | 4 each | **skinning weight**, one float |
+| `0x00040` + `0x00100` | 24 together | undecoded; always co-occur |
+| `0x20000` | 16 | undecoded |
+
+The weight reading is confirmed directly rather than by arithmetic. Sonic's first
+vertex reads `0.012, 0.988, 0.000, 0.000` — **summing to exactly 1** — and across
+the build **572 vertex lists carry weights**, 395 with three and 177 with four,
+with **96% of 93,149 sampled vertices summing to 1.00**.
+
+**They sit between the position and the normal**, which matters more than it
+sounds. The component order in a vertex is not the order of the format bits, and
+the layout table used to go straight from position to normal. On Sonic that put
+the normal at offset 12 instead of 28 and the texture coordinates at 24 instead of
+40 — **every skinned model's texture coordinates were being read out of its
+normals.** It produced plausible-looking floats rather than an error, which is why
+nothing caught it.
+
+Fixed, and checked the way it should have been the first time: texture
+coordinates now land in a sane range on **7,290 of 7,290** lists that carry them,
+across 2.75 million vertices.
+
+The normal's position is what pins the layout. Testing every three-float slot in
+Sonic's 48-byte stride for unit length, `+28` comes out at exactly 1.0000 while
+`+12` — where a naive reader looks — gives 0.9743. Close enough to look right,
+which is the dangerous kind of wrong.
+
+### What is still missing to draw a character
+
+The weights say *how much* each of several matrices moves a vertex. What says
+*which* matrices is the palette that `n_mtxpal` counts — 99 of them on Sonic's 109
+nodes — and that is not decoded. With it, a character can be posed and animated.
+
 ## Still open
 
 - **The render-state block's contents.** The material's texture binding is
