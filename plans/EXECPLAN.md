@@ -103,6 +103,36 @@ Episode II bundles Episode I content for its Episode Metal mode
 known from its decompilation, this content is a calibration set: any format
 decoder can be checked against data whose meaning is independently established.
 
+## Progress against the goal
+
+The goal is the full thing: Episode II re-implemented in portable source and
+running on desktop **and** phones. Percentages are weighted by effort, not by
+task count, and are deliberately pessimistic.
+
+| Phase | Weight | Done | Contribution |
+|-------|-------:|-----:|-------------:|
+| 1. Asset formats | 12% | ~75% | 9.0% |
+| 2. Geometry, audio, shaders | 18% | ~15% | 2.7% |
+| 3. Engine port | 20% | 0% | 0% |
+| 4. Game logic | 35% | 0% | 0% |
+| 5. Mobile targets | 15% | 0% | 0% |
+| **Total** | | | **≈ 12%** |
+
+**Runnable code: 0%.** Nothing in this repository executes the game on any
+platform. That number moves off zero in phase 3, not before.
+
+A caveat worth stating plainly, because it is easy to assume otherwise: *the PC
+platform is not already solved.* The original `Sonic.exe` runs on Windows, but
+that is SEGA's binary — the very thing this project exists to replace — and in
+this Beta 8 build it is locked behind a Steam check that fails. Starting from a
+PC build helps because x86 has the best tooling and D3D9 is well documented, not
+because it delivers a working PC target for free. Our first runnable binary will
+be a desktop one, and it does not exist yet.
+
+Phase 1 is nearly finished and is genuinely front-loaded — it is the phase where
+a sibling decompilation helps most. Phases 3 and 4 are where the years live, and
+no amount of format work shortens them.
+
 ## Phases
 
 ### Phase 1 — Asset containers *(in progress)*
