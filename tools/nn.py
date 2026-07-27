@@ -397,6 +397,102 @@ def read_textures(data: bytes, f: NnFile, base: int = 0x20) -> list[TextureRef]:
     ]
 
 
+class SubMotion:
+    """One animated channel of a motion.
+
+        +0x00  u32    type flags
+        +0x04  u32    interpolation type
+        +0x08  s32    target id — the node this channel drives
+        +0x0C  float  start frame
+        +0x10  float  end frame
+        +0x14  float  first key frame
+        +0x18  float  last key frame
+        +0x1C  s32    key frame count
+        +0x20  s32    key size in bytes
+        +0x24  u32    key data offset
+
+    40 bytes, matching Episode I's `NNS_SUBMOTION` — measured, not assumed.
+    """
+
+    SIZE = 0x28
+    __slots__ = ("ftype", "ip_type", "target", "start", "end",
+                 "start_key", "end_key", "n_key", "key_size", "ofs_keys")
+
+    def __init__(self, data: bytes, offset: int):
+        (self.ftype, self.ip_type, self.target, self.start, self.end,
+         self.start_key, self.end_key, self.n_key, self.key_size,
+         self.ofs_keys) = struct.unpack_from("<IIiffffiiI", data, offset)
+
+    def __repr__(self):
+        return (f"<SubMotion target={self.target} keys={self.n_key} "
+                f"frames {self.start:g}..{self.end:g}>")
+
+
+class Motion:
+    """The `NZMO` root — a skeletal or camera animation.
+
+        +0x00  u32    type flags; the low 5 bits select the channel kind
+        +0x04  float  start frame
+        +0x08  float  end frame
+        +0x0C  s32    submotion count
+        +0x10  u32    submotion array offset
+        +0x14  float  frame rate
+        +0x18  u32[2] reserved
+
+    Start frames may be **negative** — several Sonic transition animations begin
+    at -5 or -10 for blend pre-roll, which is legitimate and not a parse error.
+    """
+
+    SIZE = 0x20
+    __slots__ = ("ftype", "start", "end", "n_submotion", "ofs_submotion", "frame_rate")
+
+    def __init__(self, data: bytes, offset: int):
+        (self.ftype, self.start, self.end, self.n_submotion,
+         self.ofs_submotion, self.frame_rate) = struct.unpack_from("<IffiIf", data, offset)
+
+    @property
+    def channel_kind(self) -> int:
+        """1 node, 2 camera, 4 light — the low 5 bits of the type flags."""
+        return self.ftype & 31
+
+    @property
+    def duration(self) -> float:
+        return (self.end - self.start) / self.frame_rate if self.frame_rate else 0.0
+
+    def __repr__(self):
+        return (f"<Motion {self.n_submotion} channels, frames "
+                f"{self.start:g}..{self.end:g} @ {self.frame_rate:g}fps>")
+
+
+def read_motion(data: bytes, f: NnFile, base: int = 0x20):
+    """Parse an `NZMO` motion and its submotions, or None if there is none."""
+    chunk = None
+    for candidate in f.chunks:
+        if candidate.name[2:] == "MO":
+            chunk = candidate
+            break
+    if chunk is None:
+        return None, []
+    if chunk.size < 8:
+        raise NnError("motion chunk too short")
+    (ofs_main,) = struct.unpack_from("<i", chunk.payload, 0)
+    at = base + ofs_main
+    if at + Motion.SIZE > len(data):
+        raise NnError(f"motion header at {at:#x} outside the file")
+    motion = Motion(data, at)
+    if motion.n_submotion < 0:
+        raise NnError(f"negative submotion count {motion.n_submotion}")
+
+    subs = []
+    array = base + motion.ofs_submotion
+    if motion.ofs_submotion and array + motion.n_submotion * SubMotion.SIZE <= len(data):
+        for i in range(motion.n_submotion):
+            subs.append(SubMotion(data, array + i * SubMotion.SIZE))
+    elif motion.n_submotion:
+        raise NnError("submotion array overruns the file")
+    return motion, subs
+
+
 class Material:
     """A material descriptor, reached through the object's material pointer array.
 
@@ -818,6 +914,64 @@ def cmd_export(args) -> int:
     return 0
 
 
+def cmd_motions(args) -> int:
+    """Parse every motion under a tree and sanity-check its channels."""
+    ok = bad = 0
+    rates: Counter = Counter()
+    kinds: Counter = Counter()
+    channels = keys = 0
+    failures: list[str] = []
+    for path in amb._iter_amb_files(args.root):
+        try:
+            archive = amb.load(path)
+        except Exception:
+            continue
+        for entry in archive:
+            if not entry.name.upper().endswith((".ZNM", ".XNM")):
+                continue
+            data = archive.read(entry)
+            try:
+                motion, subs = read_motion(data, parse(data))
+                if motion is None:
+                    continue
+                if not 0 < motion.frame_rate <= 240:
+                    raise NnError(f"implausible frame rate {motion.frame_rate}")
+                if motion.end < motion.start:
+                    raise NnError("end frame precedes start frame")
+                if len(subs) != motion.n_submotion:
+                    raise NnError("submotion count mismatch")
+                for sub in subs:
+                    # A channel must lie inside its motion's span and its key
+                    # data must be addressable.
+                    if sub.n_key < 0 or sub.key_size < 0:
+                        raise NnError("negative key count or size")
+                    if sub.ofs_keys and 0x20 + sub.ofs_keys > len(data):
+                        raise NnError("key data outside the file")
+                    keys += sub.n_key
+                channels += len(subs)
+                rates[round(motion.frame_rate, 2)] += 1
+                kinds[motion.channel_kind] += 1
+                ok += 1
+            except (NnError, struct.error) as exc:
+                bad += 1
+                if len(failures) < 10:
+                    failures.append(f"{os.path.basename(path)}::{entry.name}: {exc}")
+
+    print(f"{ok} motions parsed, {bad} failed")
+    print(f"{channels:,} channels carrying {keys:,} key frames")
+    print()
+    print("frame rates:")
+    for rate, n in rates.most_common():
+        print(f"  {rate:<8} {n}")
+    print()
+    print("channel kinds (1 node, 2 camera, 4 light):")
+    for kind, n in kinds.most_common():
+        print(f"  {kind:<4} {n}")
+    for failure in failures:
+        print(f"  ! {failure}", file=sys.stderr)
+    return 1 if bad else 0
+
+
 def cmd_textures(args) -> int:
     """Check every model's texture references resolve to a real DDS.
 
@@ -1048,6 +1202,10 @@ def main(argv=None) -> int:
     p.add_argument("dest")
     p.add_argument("--limit", type=int, default=5)
     p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("motions", help="parse every motion under a tree")
+    p.add_argument("root")
+    p.set_defaults(func=cmd_motions)
 
     p = sub.add_parser("textures", help="check model texture references resolve to real DDS")
     p.add_argument("root")

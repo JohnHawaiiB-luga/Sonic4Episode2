@@ -7,8 +7,9 @@ Status: **VERIFIED**. All **5,727 NN containers** parse cleanly with zero
 failures and the chunk census cross-checks exactly against the file extensions.
 Inside the object chunk, the header, node tree, vertex lists, primitive lists and
 mesh sets are all decoded: **3,546 models yield 2,820,398 vertices and 2,513,705
-triangles with zero failures**. Materials and their texture bindings are decoded too. Motions (`NZMO`) and morph
-animation (`NZMA`) remain untouched.
+triangles with zero failures**. Materials and their texture bindings are decoded, and so are motions: **1,481 of
+1,481 parse, 296,072 channels carrying 3,184,997 key frames**. Morph animation
+(`NZMA`) and the motion key *payloads* remain untouched.
 
 ## Chunks
 
@@ -333,8 +334,9 @@ of the file and match to two decimal places.
   strides (56, 64) are unidentified — presumably blend weights and indices.
 - **Unknown word at `+0x04`** of the vertex list descriptor, and the 32 unknown
   bytes at `+0x70` of a node.
-- **`NZMO` motions and `NZMA` morph animation.** Untouched. 846 models are
-  skinned, so animation is a whole phase of its own.
+- **Motion key frame payloads.** Motion headers and channel descriptors parse,
+  but the key data each channel points at is not yet interpreted. `NZMA` morph
+  animation is untouched.
 
 Episode I's `NNS_OBJECT.Read`, reached from `amObjectSetup`
 (`AppMain/Am/AmObject.cs:5`), remains the oracle for traversal order — with the
@@ -427,6 +429,66 @@ The optional `+0x18` pointer also explains the size correlation noticed earlier:
 material pointers with `fType` `0x30000000` are consistently exactly 4 bytes
 larger than `0x10000000` ones, because that flag is what carries the extra
 texture-map field.
+
+
+## Motions (`NZMO`)
+
+Status: **VERIFIED**. All **1,481 motions parse, 0 failed**, carrying **296,072
+channels and 3,184,997 key frames** between them.
+
+### Motion header
+
+| Offset | Type | Field |
+|--------|------|-------|
+| `0x00` | `u32` | type flags; low 5 bits are the channel kind |
+| `0x04` | `float` | start frame |
+| `0x08` | `float` | end frame |
+| `0x0C` | `s32` | submotion count |
+| `0x10` | `u32` | submotion array offset |
+| `0x14` | `float` | frame rate |
+| `0x18` | `u32[2]` | reserved |
+
+32 bytes, matching Episode I's `NNS_MOTION`.
+
+**Start frames may be negative.** Five Sonic transition animations begin at -5 or
+-10 for blend pre-roll — `SON_CHANGE_01`, `SON_END_1_01`, `SON_CHANGE_L_01`,
+`SON_TO_CHANGE_01`, `SON_TO_CHANGE_L_01`. A validator that assumes frames start
+at zero will flag those five as corrupt when they are perfectly correct.
+
+### Submotion
+
+| Offset | Type | Field |
+|--------|------|-------|
+| `0x00` | `u32` | type flags |
+| `0x04` | `u32` | interpolation type |
+| `0x08` | `s32` | target id — the node this channel drives |
+| `0x0C` | `float` | start frame |
+| `0x10` | `float` | end frame |
+| `0x14` | `float` | first key frame |
+| `0x18` | `float` | last key frame |
+| `0x1C` | `s32` | key frame count |
+| `0x20` | `s32` | key size in bytes |
+| `0x24` | `u32` | key data offset |
+
+40 bytes.
+
+### Census
+
+| Frame rate | Motions |
+|-----------|---------|
+| 60 | 1,410 |
+| 29.97 | 69 |
+| 30 | 2 |
+
+Every motion in the build is channel kind **1** (node animation) — no camera or
+light motions ship as `.ZNM`. The 29.97 entries are NTSC-rate, presumably
+authored against video.
+
+### Still open
+
+The **key frame payloads**. Each channel says how many keys it has, how large
+each is and where they live, but the key contents are not yet interpreted. That
+is what actually animates a skeleton, and it is the next piece of animation work.
 
 ## Materials - post-mortem on three failed approaches
 
