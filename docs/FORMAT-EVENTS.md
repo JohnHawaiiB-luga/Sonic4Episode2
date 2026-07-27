@@ -35,22 +35,61 @@ Each block begins with a `u16` count followed by exactly `count` records of
 **12 bytes**. Verified: every block in every `.EV` file satisfies
 `block_size == 2 + count * 12`.
 
-Within a record, the following is **INFERRED and unproven**:
+Record layout:
 
-| Offset | Type  | Likely meaning |
-|--------|-------|----------------|
+| Offset | Type  | Meaning |
+|--------|-------|---------|
 | `0x00` | `u8`  | x position within the block |
 | `0x01` | `u8`  | y position within the block |
 | `0x02` | `u16` | object id |
 | `0x04` | `u16` | flags |
-| `0x06` | 6 bytes | per-object parameters |
+| `0x06` | `s8`  | bounding box left |
+| `0x07` | `s8`  | bounding box top |
+| `0x08` | `u8`  | bounding box width |
+| `0x09` | `u8`  | bounding box height |
+| `0x0A` | `u16` | per-object parameter |
 
-The `u16` at `+0x02` behaves like an object id: Zone 1 Act 1's main `.EV` has 533
-records drawing on 49 distinct values, with id 724 appearing 120 times — the
-frequency profile expected of rings. The field at `+0x04` is dominated by `0` and
-`0x8000`, which reads like a flag word. Neither has been confirmed against the
-binary's spawn code, so `tools/stagemap.py` retains the full 12 raw bytes on
-every `Placement` alongside the decoded guesses.
+The `u16` at `+0x02` behaves like an object id: Zone 1 Act 1's main `.EV` holds
+533 records drawing on 49 distinct values, with id 724 appearing 120 times. The
+field at `+0x04` is dominated by `0` and `0x8000`.
+
+Confidence: the 12-byte stride and the count are **VERIFIED**. The field split is
+**corroborated but not proven** — it comes from Episode I's equivalent structure
+and produces sane values on Episode II data (bounding boxes like 128×40, a record
+at world origin that is plausibly the player start), but it has not been checked
+against Episode II's own spawn code. `tools/stagemap.py` keeps the full 12 raw
+bytes on every `Placement` so nothing is lost if the split turns out wrong.
+
+## Block pitch and world coordinates
+
+One block covers **256 × 256 pixels**, so a record's absolute position is:
+
+```
+world_x = block_x * 256 + record.x
+world_y = block_y * 256 + record.y
+```
+
+This follows from the grid being the map at quarter resolution: four map cells
+per block across 256 pixels makes each map cell 64 pixels square. Placement
+positions computed this way land inside the stage bounds on every act checked.
+
+## `.DC` and `.RG` — same grid, different records
+
+These share the block-grid header exactly and differ only in record size,
+verified across the build:
+
+| Extension | Stride | Layout |
+|-----------|--------|--------|
+| `.EV` | 12 bytes | placements, above |
+| `.DC` |  4 bytes | `u8 x, u8 y, u16 id` |
+| `.RG` |  2 bytes | `u8 x, u8 y` |
+
+`.RG` carrying nothing but a position is consistent with ring placement, where
+the object type is implicit. `tools/stagemap.py` reads all three through
+`read_blocks(data, stride)`.
+
+Note that an all-empty file trivially satisfies *any* stride, so stride tests
+must be run on files that actually contain records.
 
 ## Three files per act
 
@@ -67,14 +106,16 @@ specialised — `A` uses a single object id throughout. What selects between the
 is **OPEN**; the plausible candidates are difficulty, character or co-op mode,
 given Episode II's Tails mechanics, but this has not been established.
 
-## Related, still undecoded
+## Still open
 
-`.DC` and `.RG` files in the same archive share this exact block-grid header —
-same quarter-resolution dimensions, same `u32` offset table, table ending exactly
-where the data begins. Their per-block records are **not** 12 bytes, so the
-record layout differs and remains unknown. Episode I's decompilation is no help
-here: its `readDCFile`, `readRGFile` and `readEVFile` are all unimplemented
-stubs, so these must be recovered from the Episode II binary directly.
+The meaning of the object ids themselves. Episode II's binary holds roughly 298
+object name strings, but they are not stored as a lookup array — each is pushed
+as an immediate inside its own object's code, so the id-to-name table can only be
+recovered by disassembly, not by reading data.
+
+Episode I's decompilation cannot help here either: its `readDCFile`, `readRGFile`
+and `readEVFile` are all unimplemented stubs, so the semantics above were derived
+from Episode II's data directly.
 
 ## Usage
 

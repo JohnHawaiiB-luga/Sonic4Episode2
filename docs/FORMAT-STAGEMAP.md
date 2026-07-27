@@ -23,6 +23,29 @@ Both files share a four-byte header, little-endian:
 `.MP` cells are `u16`. `.MD` cells are `u8`. There is no padding, no palette and
 no compression — the body length is exactly `width * height * depth`.
 
+## `.MP` cell bitfield
+
+A `.MP` cell is not a bare tile index — it packs a transform:
+
+| Bits | Field |
+|------|-------|
+| 0–11  | tile id (12 bits) |
+| 12–13 | rotation (0–3) |
+| 14    | horizontal flip |
+| 15    | vertical flip |
+
+Verified across **512,070 non-zero cells** spanning every zone: the widest tile
+id observed is 2779, comfortably inside 12 bits, and every high-nibble value that
+occurs (1, 3, 4, 8, 12) decodes to a coherent transform. Transforms are rare —
+99.8% of cells carry none — but they are definitely used, and adjacent cells
+frequently appear as mirrored pairs, which is exactly what symmetric level
+geometry should look like.
+
+Corroborated afterwards by Episode I's `MP_BLOCK` struct, which applies the same
+masks.
+
+`tools/stagemap.py` exposes this as `Grid.tile(x, y) -> (id, rot, flip_h, flip_v)`.
+
 ## Layers
 
 Zone 1 Act 1 (`ZONE11_MAP.AMB`, 510 × 70) is representative:
