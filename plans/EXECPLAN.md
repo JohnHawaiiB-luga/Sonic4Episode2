@@ -112,11 +112,11 @@ task count, and are deliberately pessimistic.
 | Phase | Weight | Done | Contribution |
 |-------|-------:|-----:|-------------:|
 | 1. Asset formats | 12% | ~80% | 9.6% |
-| 2. Geometry, audio, shaders | 18% | ~50% | 9.0% |
+| 2. Geometry, audio, shaders | 18% | ~55% | 9.9% |
 | 3. Engine port | 20% | 0% | 0% |
 | 4. Game logic | 35% | 0% | 0% |
 | 5. Mobile targets | 15% | 0% | 0% |
-| **Total** | | | **≈ 19%** |
+| **Total** | | | **≈ 20%** |
 
 **Runnable code: 0%.** Nothing in this repository executes the game on any
 platform. That number moves off zero in phase 3, not before.

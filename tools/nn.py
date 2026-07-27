@@ -309,6 +309,60 @@ class PrimitiveList:
         return f"<PrimitiveList mode={self.mode:#x} strips={self.n_strips} indices={self.total}>"
 
 
+class TextureRef:
+    """One entry of the `NZTL` texture list.
+
+        +0x00  u32  type flags
+        +0x04  u32  offset of the NUL-terminated filename
+        +0x08  u16  minification filter
+        +0x0A  u16  magnification filter
+        +0x0C  u32  global index
+        +0x10  u32  bank
+
+    20 bytes — the same size as Episode I's `NNS_TEXFILE`, for once.
+    """
+
+    SIZE = 0x14
+    __slots__ = ("ftype", "name", "min_filter", "mag_filter", "global_index", "bank")
+
+    def __init__(self, data: bytes, base: int, offset: int):
+        (self.ftype, ofs_name, self.min_filter, self.mag_filter,
+         self.global_index, self.bank) = struct.unpack_from("<IIHHII", data, offset)
+        self.name = ""
+        if ofs_name:
+            at = base + ofs_name
+            end = data.find(b"\0", at)
+            if 0 <= at < len(data):
+                self.name = data[at: end if end != -1 else len(data)].decode("ascii", "replace")
+
+    def __repr__(self):
+        return f"<TextureRef {self.name!r}>"
+
+
+def read_textures(data: bytes, f: NnFile, base: int = 0x20) -> list[TextureRef]:
+    """Texture filenames a model references, from its `NZTL` chunk."""
+    chunk = None
+    for candidate in f.chunks:
+        if candidate.name[2:] == "TL":
+            chunk = candidate
+            break
+    if chunk is None:
+        return []
+    if chunk.size < 8:
+        raise NnError("texture list chunk too short")
+    (ofs_main,) = struct.unpack_from("<i", chunk.payload, 0)
+    at = base + ofs_main
+    if at + 8 > len(data):
+        raise NnError(f"texture list root at {at:#x} outside the file")
+    count, ofs_list = struct.unpack_from("<iI", data, at)
+    if count < 0 or base + ofs_list + count * TextureRef.SIZE > len(data):
+        raise NnError(f"texture list of {count} overruns the file")
+    return [
+        TextureRef(data, base, base + ofs_list + i * TextureRef.SIZE)
+        for i in range(count)
+    ]
+
+
 class Node:
     """One entry of the node tree — a transform and its links.
 
@@ -551,6 +605,12 @@ def cmd_show(args) -> int:
         except NnError as exc:
             print(f"    ! object: {exc}")
             obj = None
+        try:
+            textures = read_textures(data, f)
+        except NnError:
+            textures = []
+        if textures:
+            print(f"    textures: {', '.join(t.name for t in textures if t.name)}")
         if obj:
             cx, cy, cz = obj.center
             bx, by, bz = obj.bbox
@@ -625,6 +685,59 @@ def cmd_export(args) -> int:
                     fp.write("f " + " ".join(parts) + "\n")
                     tris += 1
         print(f"  {out}  {verts} vertices, {tris} triangles, {len(meshsets)} mesh sets")
+    return 0
+
+
+def cmd_textures(args) -> int:
+    """Check every model's texture references resolve to a real DDS.
+
+    A model's `NZTL` names the textures it wants. Those names should exist as
+    `.DDS` somewhere in the game — usually in the zone's `_T` archive rather than
+    beside the model — so this walks the whole build, collects every DDS name,
+    and then checks each model's references against that set.
+    """
+    dds: set[str] = set()
+    for path in amb._iter_amb_files(args.root):
+        try:
+            archive = amb.load(path)
+        except Exception:
+            continue
+        for entry in archive:
+            if entry.name.upper().endswith(".DDS"):
+                dds.add(entry.name.replace(chr(92), "/").rsplit("/", 1)[-1].upper())
+    print(f"{len(dds)} distinct DDS filenames across the build")
+
+    models = refs = resolved = 0
+    missing: Counter = Counter()
+    for path in amb._iter_amb_files(args.root):
+        try:
+            archive = amb.load(path)
+        except Exception:
+            continue
+        for entry in archive:
+            if not entry.name.upper().endswith(".ZNO"):
+                continue
+            data = archive.read(entry)
+            try:
+                textures = read_textures(data, parse(data))
+            except NnError as exc:
+                missing[f"<parse failed: {exc}>"] += 1
+                continue
+            models += 1
+            for tex in textures:
+                if not tex.name:
+                    continue
+                refs += 1
+                if tex.name.upper() in dds:
+                    resolved += 1
+                else:
+                    missing[tex.name.upper()] += 1
+
+    pct = (resolved / refs * 100) if refs else 0.0
+    print(f"{models} models carry {refs} texture references")
+    print(f"{resolved} resolve to a real DDS ({pct:.1f}%), {refs - resolved} do not")
+    for name, n in missing.most_common(10):
+        print(f"  ! {name} x{n}")
     return 0
 
 
@@ -805,6 +918,10 @@ def main(argv=None) -> int:
     p.add_argument("dest")
     p.add_argument("--limit", type=int, default=5)
     p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("textures", help="check model texture references resolve to real DDS")
+    p.add_argument("root")
+    p.set_defaults(func=cmd_textures)
 
     p = sub.add_parser("geometry", help="extract geometry from every model under a tree")
     p.add_argument("root")

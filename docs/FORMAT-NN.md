@@ -277,6 +277,44 @@ the present attributes before it.
 `tools/nn.py` extracts positions, normals and texture coordinates, and the OBJ
 exporter writes all three. Texture coordinates need their V axis flipped for OBJ.
 
+### Texture list (`NZTL`)
+
+The chunk's root is `{s32 count; u32 list_offset}`, then `count` entries of
+**20 bytes** — the one struct so far that matches Episode I's size exactly:
+
+| Offset | Type | Field |
+|--------|------|-------|
+| `0x00` | `u32` | type flags |
+| `0x04` | `u32` | offset of the NUL-terminated filename |
+| `0x08` | `u16` | minification filter |
+| `0x0A` | `u16` | magnification filter |
+| `0x0C` | `u32` | global index |
+| `0x10` | `u32` | bank |
+
+Status: **VERIFIED**. Across the build, 3,577 models carry **9,815 texture
+references and 9,665 of them (98.5%) resolve** to a `.DDS` that actually exists.
+Names keep their authored casing, e.g. `ene_hopper_dif.dds`, `Z1_1_block_06_dif.dds`.
+
+The 150 unresolved are effect and cutscene textures — `EMERALD_ADD.DDS`,
+`SONIC_FOOT.DDS`, `EG_TOON_*` — which live in archives loaded separately from the
+model, or are referenced but not shipped in this beta. Nothing suggests a parsing
+problem.
+
+Suffixes follow the texture bank convention: `_dif` diffuse, `_spe` specular,
+`_env` environment map.
+
+### Binding a mesh to a texture — partially solved
+
+A subobject carries its own texture index list (`n_tex`, `ofs_tex`), an array of
+`s32` indices into the model's `NZTL`. The Hopper's two subobjects both list
+`[0, 1, 2]`, i.e. all three of its textures.
+
+That is *not* the whole answer. `Z1_G_HASIRA_B.ZNO` has **3 materials and only 2
+textures**, and its mesh sets reference materials 1, 2 and 0 — so the final
+selector has to live in the material, which remains undecoded. For the common
+case of a model with a single texture the ambiguity does not arise, and that
+covers most stage tiles.
+
 ### Cross-check
 
 The extraction agrees with the header independently. `ENE_HOPPER.ZNO` declares a
@@ -288,7 +326,8 @@ of the file and match to two decimal places.
 
 ## Still open
 
-- **Materials.** Located but **variable in size**, unlike everything else here.
+- **Materials**, and with them the exact mesh-to-texture binding. Located but
+  **variable in size**, unlike everything else here.
   The material pointer's `fType` differs per material (`0x10000000`,
   `0x30000000`) and the gaps between consecutive descriptors vary — 196 and 200
   bytes within a single model — so the layout is flag-driven, with optional
