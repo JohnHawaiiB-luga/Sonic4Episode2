@@ -35,10 +35,13 @@ public sealed class StageViewerGame : Game
     private readonly Dictionary<string, Texture2D> _textures = [];
     private StageBatch? _pending;
     private Texture2D _white = null!;
+    private Texture2D _marker = null!;
     private GameEngine _engine = null!;
 
     private Vector2 _camera;
     private float _zoom = 1f;
+    private bool _followPlayer;
+    private bool _tabHeld;
     private string _status = "";
 
     public StageViewerGame(string gameRoot, string actArchive)
@@ -51,7 +54,7 @@ public sealed class StageViewerGame : Game
             PreferredBackBufferHeight = 720,
         };
         IsMouseVisible = true;
-        Window.Title = "Sonic 4 Episode II — stage viewer";
+        Window.Title = "Sonic 4 Episode II";
     }
 
     protected override void Initialize()
@@ -80,14 +83,27 @@ public sealed class StageViewerGame : Game
         var batch = _engine.Stage;
         _pending = batch;
         _status = _engine.Status;
+        _followPlayer = _engine.Player is not null;
 
         Console.WriteLine($"scene '{_engine.Events.Current.Name}': {_status}");
         Console.WriteLine($"{_engine.Scheduler.Count} tasks: " +
                           string.Join(", ", _engine.Scheduler.Tasks.Select(t => t.Name)));
+        if (_engine.Player is not null)
+            Console.WriteLine($"player spawned at {_engine.Player.Position}");
+        if (_engine.Collision is not null)
+            Console.WriteLine($"collision {_engine.Collision.Width}x{_engine.Collision.Height} cells");
 
         _camera = new Vector2((batch.MinX + batch.MaxX) / 2f, (batch.MinY + batch.MaxY) / 2f);
-        float span = Math.Max(batch.MaxX - batch.MinX, 1f);
-        _zoom = 1280f / span;
+        if (_followPlayer && _engine.Player is not null)
+        {
+            _camera = new Vector2(_engine.Player.Position.X, _engine.Player.Position.Y);
+            _zoom = 1.6f;
+        }
+        else
+        {
+            float span = Math.Max(batch.MaxX - batch.MinX, 1f);
+            _zoom = 1280f / span;
+        }
     }
 
     private void BuildBuffers(StageBatch batch)
@@ -163,6 +179,8 @@ public sealed class StageViewerGame : Game
         };
         _white = new Texture2D(GraphicsDevice, 1, 1);
         _white.SetData(new[] { Color.Gray });
+        _marker = new Texture2D(GraphicsDevice, 1, 1);
+        _marker.SetData(new[] { new Color(70, 130, 255) });
 
         LoadTextures(Path.Combine(_gameRoot, _actArchive));
         if (_pending is not null)
@@ -172,21 +190,85 @@ public sealed class StageViewerGame : Game
         }
     }
 
+    /// <summary>
+    /// A flat quad where the player is.
+    /// </summary>
+    /// <remarks>
+    /// There is no character model yet: Sonic's mesh and motions are in the
+    /// archives but nothing binds them to the player object. A marker is enough
+    /// to see that the physics and camera behave.
+    /// </remarks>
+    private void DrawPlayerMarker()
+    {
+        if (_engine.Player is null || !_followPlayer) return;
+
+        float x = _engine.Player.Position.X;
+        float y = _engine.Player.Position.Y;
+        const float halfWidth = Player.Width / 2f;
+        const float height = Player.Height;
+        const float z = 400f;   // in front of every stage layer
+
+        var corners = new[]
+        {
+            new VertexPositionNormalTexture(new Vector3(x - halfWidth, y, z), Vector3.Backward, Vector2.Zero),
+            new VertexPositionNormalTexture(new Vector3(x + halfWidth, y, z), Vector3.Backward, Vector2.Zero),
+            new VertexPositionNormalTexture(new Vector3(x - halfWidth, y + height, z), Vector3.Backward, Vector2.Zero),
+            new VertexPositionNormalTexture(new Vector3(x + halfWidth, y + height, z), Vector3.Backward, Vector2.Zero),
+        };
+        var indices = new[] { 0, 1, 2, 2, 1, 3 };
+
+        _effect.Texture = _marker;
+        foreach (var pass in _effect.CurrentTechnique.Passes)
+        {
+            pass.Apply();
+            GraphicsDevice.DrawUserIndexedPrimitives(
+                PrimitiveType.TriangleList, corners, 0, 4, indices, 0, 2);
+        }
+    }
+
     protected override void Update(GameTime gameTime)
     {
         var keyboard = Keyboard.GetState();
         if (keyboard.IsKeyDown(Keys.Escape)) Exit();
 
-        // The engine advances every frame even though nothing is hung on it
-        // yet: the loop being real is the point.
+        if (keyboard.IsKeyDown(Keys.Tab) && !_tabHeld) _followPlayer = !_followPlayer;
+        _tabHeld = keyboard.IsKeyDown(Keys.Tab);
+
+        // Input is handed to the player before the engine steps, so the player
+        // acts on this frame's input rather than last frame's.
+        if (_engine.Player is not null && _followPlayer)
+        {
+            float move = 0f;
+            if (keyboard.IsKeyDown(Keys.Left) || keyboard.IsKeyDown(Keys.A)) move -= 1f;
+            if (keyboard.IsKeyDown(Keys.Right) || keyboard.IsKeyDown(Keys.D)) move += 1f;
+            _engine.Player.InputX = move;
+            _engine.Player.InputJump =
+                keyboard.IsKeyDown(Keys.Space) ||
+                keyboard.IsKeyDown(Keys.Z) ||
+                keyboard.IsKeyDown(Keys.Up) ||
+                keyboard.IsKeyDown(Keys.W);
+        }
+
         _engine.Step();
 
         float delta = (float)gameTime.ElapsedGameTime.TotalSeconds;
-        float pan = 600f * delta / _zoom;
-        if (keyboard.IsKeyDown(Keys.Left)) _camera.X -= pan;
-        if (keyboard.IsKeyDown(Keys.Right)) _camera.X += pan;
-        if (keyboard.IsKeyDown(Keys.Up)) _camera.Y += pan;
-        if (keyboard.IsKeyDown(Keys.Down)) _camera.Y -= pan;
+
+        if (_followPlayer && _engine.Player is not null)
+        {
+            // Lag the camera behind the player so it eases rather than snapping.
+            var target = new Vector2(_engine.Player.Position.X,
+                                     _engine.Player.Position.Y + 40f);
+            _camera += (target - _camera) * MathHelper.Clamp(delta * 8f, 0f, 1f);
+        }
+        else
+        {
+            float pan = 600f * delta / _zoom;
+            if (keyboard.IsKeyDown(Keys.Left)) _camera.X -= pan;
+            if (keyboard.IsKeyDown(Keys.Right)) _camera.X += pan;
+            if (keyboard.IsKeyDown(Keys.Up)) _camera.Y += pan;
+            if (keyboard.IsKeyDown(Keys.Down)) _camera.Y -= pan;
+        }
+
         if (keyboard.IsKeyDown(Keys.PageUp)) _zoom *= 1f + delta;
         if (keyboard.IsKeyDown(Keys.PageDown)) _zoom /= 1f + delta;
 
@@ -237,6 +319,7 @@ public sealed class StageViewerGame : Game
                 }
             }
         }
+        DrawPlayerMarker();
         base.Draw(gameTime);
     }
 }

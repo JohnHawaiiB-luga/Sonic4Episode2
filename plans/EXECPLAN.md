@@ -113,12 +113,17 @@ task count, and are deliberately pessimistic.
 |-------|-------:|-----:|-------------:|
 | 1. Asset formats | 12% | ~85% | 10.2% |
 | 2. Geometry, audio, shaders | 18% | ~90% | 16.2% |
-| 3. Engine port | 20% | ~60% | 12.0% |
-| 4. Game logic | 35% | 0% | 0% |
+| 3. Engine port | 20% | ~75% | 15.0% |
+| 4. Game logic | 35% | ~3% | 1.1% |
 | 5. Mobile targets | 15% | ~3% | 0.5% |
-| **Total** | | | **≈ 39%** |
+| **Total** | | | **≈ 43%** |
 
-**Runnable: a viewer, not the game.** `Sonic4Episode2.Desktop` opens a MonoGame
+**Runnable: a playable slice.** You can run and jump on Zone 1 Act 1's real
+geometry, with collision from the stage's own attribute layer. The physics
+constants are placeholders, not recovered values, and there are no objects,
+enemies or goal - so this is the first rung of phase 4, not the end of it.
+
+Previously: `Sonic4Episode2.Desktop` opens a MonoGame
 window and renders a stage assembled live from the original archives - 17,526
 tiles for Zone 1 Act 1. That is the first thing here that runs at all. It has no
 player, no physics and no game logic, so **the playable game remains at 0%**.
@@ -198,7 +203,10 @@ a MonoGame window. 38 tests passing.
 ### Phase 4 — Game logic
 
 - [ ] Recover Episode II's object and stage tables from `Sonic.exe`
-- [ ] Player physics, then Tails co-op and the combo moves
+- [x] A player with gravity, ground/wall collision and jumping - **placeholder
+      constants, not Episode II's own**
+- [ ] Recover the real physics values from the binary
+- [ ] Tails co-op and the combo moves
 - [ ] Zones, acts, bosses, special stages
 - [ ] Episode Metal
 

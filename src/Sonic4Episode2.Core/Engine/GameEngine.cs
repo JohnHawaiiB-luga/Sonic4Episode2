@@ -59,6 +59,12 @@ public sealed class GameEngine
     /// <summary>The stage currently mounted, if any.</summary>
     public StageBatch? Stage { get; private set; }
 
+    /// <summary>Solidity for the mounted stage, from its attribute layer.</summary>
+    public CollisionMap? Collision { get; private set; }
+
+    /// <summary>The player, once a stage scene has created one.</summary>
+    public Player? Player { get; private set; }
+
     public string? StageName { get; private set; }
     public ulong Frame { get; private set; }
 
@@ -92,6 +98,14 @@ public sealed class GameEngine
         {
             string label = entry.Name.Replace('\\', '/');
             label = label[(label.LastIndexOf('/') + 1)..];
+            // Collision comes from the attribute layer, which is a superset of
+            // the visual one: it also carries invisible walls and ceilings.
+            if (label.EndsWith("_ATTR_B.MP", StringComparison.OrdinalIgnoreCase))
+            {
+                Collision = CollisionMap.FromGrid(
+                    StageGrid.Parse(label, archive.Read(entry).Span));
+                continue;
+            }
             if (!label.EndsWith("_B.MP", StringComparison.OrdinalIgnoreCase)) continue;
 
             var grid = StageGrid.Parse(label, archive.Read(entry).Span);
@@ -108,6 +122,17 @@ public sealed class GameEngine
         Scheduler.Create("GM_MAP_MAIN", _ => { }, PriorityMap, group: SceneGroup);
         Scheduler.Create("GM_EVT_MGR", _ => Objects.Step(Scheduler.PauseLevel),
                          PriorityObject, group: SceneGroup);
+
+        if (Collision is not null)
+        {
+            Player = Objects.Add(new Player(Collision));
+            // Drop onto whatever is below rather than guessing a spawn point.
+            // The real one comes from the .EV placement data, once object ids
+            // have names attached to them.
+            Player.PlaceOnGround(
+                Collision.Width * Collision.CellSize * 0.06f,
+                -Collision.Height * Collision.CellSize * 0.1f);
+        }
     }
 
     private void ExitStage()
@@ -115,6 +140,8 @@ public sealed class GameEngine
         Scheduler.DeleteGroup(SceneGroup);
         Stage = null;
         StageName = null;
+        Collision = null;
+        Player = null;
     }
 
     /// <summary>Runs one frame.</summary>

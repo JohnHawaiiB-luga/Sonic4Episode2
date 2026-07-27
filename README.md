@@ -22,7 +22,9 @@ Early, but the foundations are real. Every number below is verified against the
    artwork**: Sylvania Castle comes out as sandstone, water and foliage
  - **A desktop viewer runs** — MonoGame window, Zone 1 Act 1 assembled live from
    the archives at 17,526 tiles
- - Nothing playable yet. No player, no physics, no game logic, don't get excited.
+ - **You can run and jump on Zone 1 Act 1** — real geometry, real collision from
+   the stage's attribute layer. Physics constants are placeholders, there are no
+   objects or enemies, and there is no goal. It is a slice, not a game.
 
 Tools are Python with zero dependencies. `stagemap.py` renders layers to PNG,
 which is the fastest way to find out whether a decode is real or whether you have
