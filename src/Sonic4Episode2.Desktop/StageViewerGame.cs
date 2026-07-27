@@ -3,6 +3,11 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Sonic4Episode2.Core;
 using Sonic4Episode2.Core.Assets;
+using Sonic4Episode2.Core.Engine;
+// The head speaks MonoGame's vector types; the engine's are only used
+// through it, so resolve the clash in favour of the graphics ones here.
+using Vector2 = Microsoft.Xna.Framework.Vector2;
+using Vector3 = Microsoft.Xna.Framework.Vector3;
 
 namespace Sonic4Episode2.Desktop;
 
@@ -30,6 +35,7 @@ public sealed class StageViewerGame : Game
     private readonly Dictionary<string, Texture2D> _textures = [];
     private StageBatch? _pending;
     private Texture2D _white = null!;
+    private GameEngine _engine = null!;
 
     private Vector2 _camera;
     private float _zoom = 1f;
@@ -54,34 +60,30 @@ public sealed class StageViewerGame : Game
         base.Initialize();
     }
 
+    /// <summary>Boots the engine and lets it mount the stage.</summary>
+    /// <remarks>
+    /// The head loads nothing itself any more. It creates the engine, steps it
+    /// until the scene machine reaches a state with a stage mounted, then
+    /// renders whatever the engine produced. Loading belongs to the stage scene.
+    /// </remarks>
     private void LoadStage()
     {
-        string actPath = Path.Combine(_gameRoot, _actArchive);
-        var archive = AmbArchive.Load(actPath);
+        _engine = new GameEngine(_gameRoot) { ActArchive = _actArchive };
 
-        string? tilesetPath = FindTileset(actPath);
-        if (tilesetPath is null)
-            throw new InvalidOperationException($"no tileset archive beside {actPath}");
+        // The boot scene requests its own exit on entry, so a single step lands
+        // in the stage scene with its archives mounted.
+        _engine.Step();
 
-        var assembler = new StageAssembler(AmbArchive.Load(tilesetPath));
-        var batch = new StageBatch();
+        if (_engine.Stage is null)
+            throw new InvalidOperationException("engine reached no stage state");
 
-        // The main terrain layer is enough to prove the chain; the parallax
-        // layers only add depth complexity to a viewer with no camera model.
-        foreach (var entry in archive.Entries)
-        {
-            string label = entry.Name.Replace('\\', '/');
-            label = label[(label.LastIndexOf('/') + 1)..];
-            if (!label.EndsWith("_B.MP", StringComparison.OrdinalIgnoreCase)) continue;
-
-            var grid = StageGrid.Parse(label, archive.Read(entry).Span);
-            assembler.AddLayer(grid, "_B", batch);
-        }
-
+        var batch = _engine.Stage;
         _pending = batch;
-        _status = $"{assembler.TilesPlaced} tiles, {batch.VertexCount:N0} vertices, " +
-                  $"{batch.TriangleCount:N0} triangles";
-        Console.WriteLine(_status);
+        _status = _engine.Status;
+
+        Console.WriteLine($"scene '{_engine.Events.Current.Name}': {_status}");
+        Console.WriteLine($"{_engine.Scheduler.Count} tasks: " +
+                          string.Join(", ", _engine.Scheduler.Tasks.Select(t => t.Name)));
 
         _camera = new Vector2((batch.MinX + batch.MaxX) / 2f, (batch.MinY + batch.MaxY) / 2f);
         float span = Math.Max(batch.MaxX - batch.MinX, 1f);
@@ -151,30 +153,6 @@ public sealed class StageViewerGame : Game
         Console.WriteLine($"{_textures.Count} textures loaded");
     }
 
-    private static string? FindTileset(string actPath)
-    {
-        string? directory = Path.GetDirectoryName(actPath);
-        if (directory is null) return null;
-        string name = Path.GetFileNameWithoutExtension(actPath);
-
-        // ZONE<zone><act>[<tileset>]_MAP -> ZONE<zone>[<tileset>]_M
-        if (!name.StartsWith("ZONE", StringComparison.OrdinalIgnoreCase)) return null;
-        string body = name[4..].Replace("_MAP", "", StringComparison.OrdinalIgnoreCase);
-        if (body.Length < 2) return null;
-
-        string zone = body[..^1];
-        string tail = body[^1..];
-        string tileset = char.IsDigit(tail[0]) ? "" : tail;
-        if (tileset.Length != 0) zone = body[..^2];
-
-        foreach (string candidate in new[] { $"ZONE{zone}{tileset}_M.AMB", $"ZONE{zone}_M.AMB" })
-        {
-            string path = Path.Combine(directory, candidate);
-            if (File.Exists(path)) return path;
-        }
-        return null;
-    }
-
     protected override void LoadContent()
     {
         _effect = new BasicEffect(GraphicsDevice)
@@ -198,6 +176,10 @@ public sealed class StageViewerGame : Game
     {
         var keyboard = Keyboard.GetState();
         if (keyboard.IsKeyDown(Keys.Escape)) Exit();
+
+        // The engine advances every frame even though nothing is hung on it
+        // yet: the loop being real is the point.
+        _engine.Step();
 
         float delta = (float)gameTime.ElapsedGameTime.TotalSeconds;
         float pan = 600f * delta / _zoom;

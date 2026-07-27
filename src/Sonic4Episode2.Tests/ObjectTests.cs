@@ -1,3 +1,4 @@
+using System.Numerics;
 using Sonic4Episode2.Core.Engine;
 using Xunit;
 
@@ -58,7 +59,7 @@ public class GameObjectTests
 
         // Stepping off the platform must return the object exactly, not
         // strand it 5 units along.
-        instance.TempOffset = Vector3.Zero;
+        instance.TempOffset = System.Numerics.Vector3.Zero;
         instance.Update();
         Assert.Equal(100f, instance.Position.X);
     }

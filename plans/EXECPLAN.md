@@ -113,10 +113,10 @@ task count, and are deliberately pessimistic.
 |-------|-------:|-----:|-------------:|
 | 1. Asset formats | 12% | ~85% | 10.2% |
 | 2. Geometry, audio, shaders | 18% | ~90% | 16.2% |
-| 3. Engine port | 20% | ~50% | 10.0% |
+| 3. Engine port | 20% | ~60% | 12.0% |
 | 4. Game logic | 35% | 0% | 0% |
 | 5. Mobile targets | 15% | ~3% | 0.5% |
-| **Total** | | | **≈ 37%** |
+| **Total** | | | **≈ 39%** |
 
 **Runnable: a viewer, not the game.** `Sonic4Episode2.Desktop` opens a MonoGame
 window and renders a stage assembled live from the original archives - 17,526
@@ -191,7 +191,9 @@ material struct) and motion playback (`NZMO` untouched).
 - [ ] Renderer: Episode II is far more 3D-model-driven than Episode I, so this
       is a genuine extension, not a copy
 
-Gate: engine boots, mounts the real data, reaches a rendered frame.
+Gate: **met.** The engine boots through its scene table, mounts Zone 1 Act 1
+from the original archives, registers its tasks and reaches a rendered frame in
+a MonoGame window. 38 tests passing.
 
 ### Phase 4 — Game logic
 

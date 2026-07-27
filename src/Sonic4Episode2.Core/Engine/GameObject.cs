@@ -1,3 +1,8 @@
+// System.Numerics.Vector3 rather than a hand-rolled one: it is the standard
+// type, it is SIMD-accelerated, and defining another Vector3 collides with the
+// one every graphics framework already ships.
+using System.Numerics;
+
 namespace Sonic4Episode2.Core.Engine;
 
 /// <summary>
@@ -206,17 +211,4 @@ public sealed class ObjectManager
         _objects.AddRange(_pending);
         _pending.Clear();
     }
-}
-
-/// <summary>A position or displacement in world space.</summary>
-public struct Vector3(float x, float y, float z)
-{
-    public float X = x, Y = y, Z = z;
-
-    public static Vector3 Zero => new(0, 0, 0);
-
-    public static Vector3 operator +(Vector3 a, Vector3 b) => new(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
-    public static Vector3 operator -(Vector3 a, Vector3 b) => new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
-
-    public override readonly string ToString() => $"({X:0.##}, {Y:0.##}, {Z:0.##})";
 }

@@ -27,6 +27,7 @@ public sealed class EventSystem
 
     private readonly SceneDefinition[] _scenes;
     private bool _changeRequested;
+    private bool _started;
     private int _requestedId = -1;
     private byte[] _argument = new byte[8];
 
@@ -38,6 +39,19 @@ public sealed class EventSystem
 
         CurrentId = startId;
         ArmDefaultIfLinear();
+    }
+
+    /// <summary>Enters the start scene. Call once, after construction.</summary>
+    /// <remarks>
+    /// Deliberately not done in the constructor. A scene's enter callback
+    /// routinely needs the event system itself — the boot scene requests its own
+    /// transition — and during construction the field holding it is still null.
+    /// Entering here instead means the whole object graph exists first.
+    /// </remarks>
+    public void Start()
+    {
+        if (_started) throw new InvalidOperationException("already started");
+        _started = true;
         EnterCurrent();
     }
 

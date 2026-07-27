@@ -183,7 +183,7 @@ public class EventSystemTests
     }
 
     [Fact]
-    public void EntersTheStartSceneImmediately()
+    public void EntersTheStartSceneOnStartNotOnConstruction()
     {
         var entered = new List<string>();
         var scenes = new List<SceneDefinition>
@@ -194,7 +194,22 @@ public class EventSystemTests
 
         var system = new EventSystem(scenes, startId: 1);
         Assert.Equal(1, system.CurrentId);
+
+        // Construction must not run scene callbacks: they reach back into the
+        // owning engine, which does not exist yet at that point.
+        Assert.Empty(entered);
+
+        system.Start();
         Assert.Equal(["boot"], entered);
+    }
+
+    [Fact]
+    public void StartingTwiceIsRejected()
+    {
+        var scenes = new List<SceneDefinition> { Scene("idle"), Scene("a", 2), Scene("b") };
+        var system = new EventSystem(scenes, startId: 1);
+        system.Start();
+        Assert.Throws<InvalidOperationException>(system.Start);
     }
 
     [Fact]
@@ -224,6 +239,7 @@ public class EventSystemTests
         };
 
         var system = new EventSystem(scenes, startId: 1);
+        system.Start();
         system.RequestChange();
         system.Step();
 
@@ -238,6 +254,7 @@ public class EventSystemTests
             Scene("idle"), Scene("menu", 2, 3), Scene("play"), Scene("options"),
         };
         var system = new EventSystem(scenes, startId: 1);
+        system.Start();
 
         system.DecideCase(1);
         system.RequestChange();
@@ -254,6 +271,7 @@ public class EventSystemTests
             Scene("idle"), Scene("menu", 2, 3), Scene("play"), Scene("options"),
         };
         var system = new EventSystem(scenes, startId: 1);
+        system.Start();
 
         system.DecideCase(5);   // nothing in slot 5
         system.RequestChange();
@@ -274,6 +292,7 @@ public class EventSystemTests
         };
 
         var system = new EventSystem(scenes, startId: 1);
+        system.Start();
         system.RequestChange([7, 8, 9]);
         system.Step();
 
@@ -288,6 +307,7 @@ public class EventSystemTests
     {
         var scenes = new List<SceneDefinition> { Scene("idle"), Scene("a", 2), Scene("b") };
         var system = new EventSystem(scenes, startId: 1);
+        system.Start();
 
         Assert.False(system.Step());
         Assert.Equal(1, system.CurrentId);

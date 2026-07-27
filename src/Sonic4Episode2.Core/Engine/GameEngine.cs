@@ -1,0 +1,159 @@
+using Sonic4Episode2.Core.Assets;
+
+namespace Sonic4Episode2.Core.Engine;
+
+/// <summary>
+/// Ties the scheduler, the scene machine and the object manager together and
+/// drives them from one frame step.
+/// </summary>
+/// <remarks>
+/// The layering matters. The scene machine decides *what* is running, the
+/// scheduler decides *in what order* within a frame, and the object manager
+/// holds the entities the current scene created. A scene tears itself down by
+/// deleting its task group, which is why every task a scene creates carries that
+/// scene's group id.
+/// <para>
+/// Boot order within a frame is: advance the scene machine first so a pending
+/// transition happens before anything runs, then step the scheduler, then step
+/// the objects. A scene that requests its own exit therefore finishes its frame
+/// normally and disappears at the start of the next one.
+/// </para>
+/// </remarks>
+public sealed class GameEngine
+{
+    /// <summary>Task group owned by the running scene; freed on every transition.</summary>
+    public const int SceneGroup = 1;
+
+    /// <summary>Task priorities, low to high, matching the engine's own ordering.</summary>
+    public const int PriorityMap = 0x1000;
+    public const int PriorityObject = 0x2000;
+    public const int PriorityCamera = 0x3000;
+
+    private readonly string _gameRoot;
+
+    public GameEngine(string gameRoot)
+    {
+        _gameRoot = gameRoot;
+        Scheduler = new TaskScheduler();
+        Objects = new ObjectManager();
+
+        var scenes = new List<SceneDefinition>
+        {
+            // Index 0 is the idle slot: the successor table uses 0 to mean
+            // "unset", so no real scene may live there.
+            new("idle", new int[EventSystem.BranchCount]),
+            SceneDefinition.Linear("boot", next: 2, enter: _ => EnterBoot()),
+            new("stage", new int[EventSystem.BranchCount], _ => EnterStage(), ExitStage),
+        };
+
+        Events = new EventSystem(scenes, startId: 1);
+        // Only now that every field is assigned is it safe to run scene
+        // callbacks, which reach back into this object.
+        Events.Start();
+    }
+
+    public TaskScheduler Scheduler { get; }
+    public EventSystem Events { get; }
+    public ObjectManager Objects { get; }
+
+    /// <summary>The stage currently mounted, if any.</summary>
+    public StageBatch? Stage { get; private set; }
+
+    public string? StageName { get; private set; }
+    public ulong Frame { get; private set; }
+
+    /// <summary>Act archive the stage scene will mount, relative to the root.</summary>
+    public string ActArchive { get; set; } = "G_ZONE1/MAP/ZONE11_MAP.AMB";
+
+    /// <summary>Diagnostics from the last mount.</summary>
+    public string Status { get; private set; } = "";
+
+    private void EnterBoot()
+    {
+        // Nothing to do yet beyond existing: the boot scene is where global
+        // systems would be brought up. It advances immediately.
+        Status = "boot";
+        Events.RequestChange();
+    }
+
+    private void EnterStage()
+    {
+        string actPath = Path.Combine(_gameRoot, ActArchive);
+        var archive = AmbArchive.Load(actPath);
+
+        string? tilesetPath = FindTileset(actPath);
+        if (tilesetPath is null)
+            throw new InvalidOperationException($"no tileset archive beside {actPath}");
+
+        var assembler = new StageAssembler(AmbArchive.Load(tilesetPath));
+        var batch = new StageBatch();
+
+        foreach (var entry in archive.Entries)
+        {
+            string label = entry.Name.Replace('\\', '/');
+            label = label[(label.LastIndexOf('/') + 1)..];
+            if (!label.EndsWith("_B.MP", StringComparison.OrdinalIgnoreCase)) continue;
+
+            var grid = StageGrid.Parse(label, archive.Read(entry).Span);
+            assembler.AddLayer(grid, "_B", batch);
+        }
+
+        Stage = batch;
+        StageName = Path.GetFileNameWithoutExtension(actPath);
+        Status = $"{assembler.TilesPlaced} tiles, {batch.VertexCount:N0} vertices, " +
+                 $"{batch.TriangleCount:N0} triangles";
+
+        // The map is a task like anything else, so it obeys pause levels and is
+        // torn down with the scene rather than by special-case code.
+        Scheduler.Create("GM_MAP_MAIN", _ => { }, PriorityMap, group: SceneGroup);
+        Scheduler.Create("GM_EVT_MGR", _ => Objects.Step(Scheduler.PauseLevel),
+                         PriorityObject, group: SceneGroup);
+    }
+
+    private void ExitStage()
+    {
+        Scheduler.DeleteGroup(SceneGroup);
+        Stage = null;
+        StageName = null;
+    }
+
+    /// <summary>Runs one frame.</summary>
+    public void Step()
+    {
+        Events.Step();
+        Scheduler.Step();
+        Frame++;
+    }
+
+    /// <summary>
+    /// Resolves an act archive to the model archive its tile ids index.
+    /// </summary>
+    /// <remarks>
+    /// <c>ZONE&lt;zone&gt;&lt;act&gt;[&lt;tileset&gt;]_MAP</c> maps to
+    /// <c>ZONE&lt;zone&gt;[&lt;tileset&gt;]_M</c>. Zones with one shared tileset
+    /// omit the letter, which is why the plain form is tried as a fallback.
+    /// </remarks>
+    public static string? FindTileset(string actPath)
+    {
+        string? directory = Path.GetDirectoryName(actPath);
+        if (directory is null) return null;
+
+        string name = Path.GetFileNameWithoutExtension(actPath);
+        if (!name.StartsWith("ZONE", StringComparison.OrdinalIgnoreCase)) return null;
+
+        string body = name[4..].Replace("_MAP", "", StringComparison.OrdinalIgnoreCase);
+        if (body.Length < 2) return null;
+
+        string tail = body[^1..];
+        bool hasTilesetLetter = !char.IsDigit(tail[0]);
+        string tileset = hasTilesetLetter ? tail : "";
+        string zone = hasTilesetLetter ? body[..^2] : body[..^1];
+
+        foreach (string candidate in new[] { $"ZONE{zone}{tileset}_M.AMB", $"ZONE{zone}_M.AMB" })
+        {
+            string path = Path.Combine(directory, candidate);
+            if (File.Exists(path)) return path;
+        }
+        return null;
+    }
+}
