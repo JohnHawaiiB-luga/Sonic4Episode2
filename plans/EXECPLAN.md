@@ -113,10 +113,10 @@ task count, and are deliberately pessimistic.
 |-------|-------:|-----:|-------------:|
 | 1. Asset formats | 12% | ~85% | 10.2% |
 | 2. Geometry, audio, shaders | 18% | ~90% | 16.2% |
-| 3. Engine port | 20% | ~25% | 5.0% |
+| 3. Engine port | 20% | ~30% | 6.0% |
 | 4. Game logic | 35% | 0% | 0% |
 | 5. Mobile targets | 15% | ~3% | 0.5% |
-| **Total** | | | **≈ 32%** |
+| **Total** | | | **≈ 33%** |
 
 **Runnable: a viewer, not the game.** `Sonic4Episode2.Desktop` opens a MonoGame
 window and renders a stage assembled live from the original archives - 17,526

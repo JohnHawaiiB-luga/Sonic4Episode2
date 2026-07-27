@@ -25,8 +25,11 @@ public sealed class StageViewerGame : Game
     private readonly string _actArchive;
 
     private BasicEffect _effect = null!;
-    private VertexPositionColor[] _vertices = [];
-    private int[] _indices = [];
+    private VertexPositionNormalTexture[] _vertices = [];
+    private readonly Dictionary<string, int[]> _batches = [];
+    private readonly Dictionary<string, Texture2D> _textures = [];
+    private StageBatch? _pending;
+    private Texture2D _white = null!;
 
     private Vector2 _camera;
     private float _zoom = 1f;
@@ -75,7 +78,7 @@ public sealed class StageViewerGame : Game
             assembler.AddLayer(grid, "_B", batch);
         }
 
-        BuildBuffers(batch);
+        _pending = batch;
         _status = $"{assembler.TilesPlaced} tiles, {batch.VertexCount:N0} vertices, " +
                   $"{batch.TriangleCount:N0} triangles";
         Console.WriteLine(_status);
@@ -87,19 +90,65 @@ public sealed class StageViewerGame : Game
 
     private void BuildBuffers(StageBatch batch)
     {
-        _vertices = new VertexPositionColor[batch.VertexCount];
+        _vertices = new VertexPositionNormalTexture[batch.VertexCount];
         for (int i = 0; i < batch.VertexCount; i++)
         {
-            float x = batch.Positions[i * 3];
-            float y = batch.Positions[i * 3 + 1];
-            float z = batch.Positions[i * 3 + 2];
-            // Depth-keyed tint, so overlapping geometry stays readable without
-            // textures or lighting.
-            float t = Math.Clamp((z + 700f) / 1000f, 0f, 1f);
-            var colour = new Color(0.45f + 0.4f * t, 0.40f + 0.35f * t, 0.34f + 0.30f * t);
-            _vertices[i] = new VertexPositionColor(new Vector3(x, y, z), colour);
+            _vertices[i] = new VertexPositionNormalTexture(
+                new Vector3(batch.Positions[i * 3],
+                            batch.Positions[i * 3 + 1],
+                            batch.Positions[i * 3 + 2]),
+                Vector3.Backward,
+                // The V axis points the other way in a texture than in the
+                // model data, same flip the OBJ exporter needs.
+                new Vector2(batch.TexCoords[i * 2], 1f - batch.TexCoords[i * 2 + 1]));
         }
-        _indices = [.. batch.Indices];
+        foreach (var pair in batch.IndicesByTexture)
+            _batches[pair.Key] = [.. pair.Value];
+    }
+
+    /// <summary>
+    /// Decodes every DDS in the zone's texture archives and uploads it.
+    /// </summary>
+    /// <remarks>
+    /// Textures live in the zone's <c>_T</c>/<c>_TEX</c> archives rather than
+    /// beside the models, so this sweeps the act's directory rather than
+    /// resolving per model.
+    /// </remarks>
+    private void LoadTextures(string actPath)
+    {
+        string? directory = Path.GetDirectoryName(actPath);
+        if (directory is null) return;
+
+        foreach (string file in Directory.EnumerateFiles(directory, "*.AMB"))
+        {
+            string upper = Path.GetFileName(file).ToUpperInvariant();
+            if (!upper.EndsWith("_T.AMB") && !upper.EndsWith("_TEX.AMB")) continue;
+
+            AmbArchive archive;
+            try { archive = AmbArchive.Load(file); }
+            catch (AmbException) { continue; }
+
+            foreach (var entry in archive.Entries)
+            {
+                if (!entry.Name.EndsWith(".DDS", StringComparison.OrdinalIgnoreCase)) continue;
+                string label = entry.Name.Replace('\\', '/');
+                label = label[(label.LastIndexOf('/') + 1)..].ToUpperInvariant();
+                if (_textures.ContainsKey(label)) continue;
+
+                try
+                {
+                    var decoded = DdsTexture.Parse(archive.Read(entry).Span);
+                    var texture = new Texture2D(GraphicsDevice, decoded.Width, decoded.Height);
+                    texture.SetData(decoded.Pixels);
+                    _textures[label] = texture;
+                }
+                catch (Exception ex) when (ex is DdsException or ArgumentException)
+                {
+                    // A texture that will not decode simply falls back to white.
+                }
+            }
+        }
+        Console.WriteLine($"{_textures.Count} textures loaded");
     }
 
     private static string? FindTileset(string actPath)
@@ -130,9 +179,19 @@ public sealed class StageViewerGame : Game
     {
         _effect = new BasicEffect(GraphicsDevice)
         {
-            VertexColorEnabled = true,
+            VertexColorEnabled = false,
+            TextureEnabled = true,
             LightingEnabled = false,
         };
+        _white = new Texture2D(GraphicsDevice, 1, 1);
+        _white.SetData(new[] { Color.Gray });
+
+        LoadTextures(Path.Combine(_gameRoot, _actArchive));
+        if (_pending is not null)
+        {
+            BuildBuffers(_pending);
+            _pending = null;
+        }
     }
 
     protected override void Update(GameTime gameTime)
@@ -155,7 +214,7 @@ public sealed class StageViewerGame : Game
     protected override void Draw(GameTime gameTime)
     {
         GraphicsDevice.Clear(new Color(16, 18, 24));
-        if (_indices.Length == 0) return;
+        if (_vertices.Length == 0) return;
 
         float halfWidth = GraphicsDevice.Viewport.Width / 2f / _zoom;
         float halfHeight = GraphicsDevice.Viewport.Height / 2f / _zoom;
@@ -170,20 +229,30 @@ public sealed class StageViewerGame : Game
 
         GraphicsDevice.DepthStencilState = DepthStencilState.Default;
         GraphicsDevice.RasterizerState = RasterizerState.CullNone;
+        GraphicsDevice.SamplerStates[0] = SamplerState.LinearWrap;
 
-        foreach (var pass in _effect.CurrentTechnique.Passes)
+        // One draw per texture. DrawUserIndexedPrimitives also has a per-call
+        // primitive limit well below an act's triangle count, so each batch is
+        // chunked as well.
+        const int chunk = 60000 * 3;
+        foreach (var pair in _batches)
         {
-            pass.Apply();
-            // Split into chunks: DrawUserIndexedPrimitives has a per-call limit
-            // well below a whole act's triangle count.
-            const int chunk = 60000 * 3;
-            for (int start = 0; start < _indices.Length; start += chunk)
+            _effect.Texture = _textures.TryGetValue(pair.Key.ToUpperInvariant(), out var texture)
+                ? texture
+                : _white;
+
+            foreach (var pass in _effect.CurrentTechnique.Passes)
             {
-                int count = Math.Min(chunk, _indices.Length - start);
-                GraphicsDevice.DrawUserIndexedPrimitives(
-                    PrimitiveType.TriangleList,
-                    _vertices, 0, _vertices.Length,
-                    _indices, start, count / 3);
+                pass.Apply();
+                var indices = pair.Value;
+                for (int start = 0; start < indices.Length; start += chunk)
+                {
+                    int count = Math.Min(chunk, indices.Length - start);
+                    GraphicsDevice.DrawUserIndexedPrimitives(
+                        PrimitiveType.TriangleList,
+                        _vertices, 0, _vertices.Length,
+                        indices, start, count / 3);
+                }
             }
         }
         base.Draw(gameTime);

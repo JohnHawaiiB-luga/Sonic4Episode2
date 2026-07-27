@@ -114,13 +114,17 @@ public sealed class TileMesh
 
             var buffer = new float[vertexList.Count * 3];
             vertexList.ReadPositions(buffer);
+
+            var uvBuffer = new float[vertexList.Count * 2];
+            bool hasUv = vertexList.ReadTexCoords(uvBuffer);
+
             for (int i = 0; i < vertexList.Count; i++)
             {
                 positions.Add(buffer[i * 3 + 0] - cx);
                 positions.Add(buffer[i * 3 + 1] - cy);
                 positions.Add(buffer[i * 3 + 2] - cz);
-                texCoords.Add(0f);
-                texCoords.Add(0f);
+                texCoords.Add(hasUv ? uvBuffer[i * 2 + 0] : 0f);
+                texCoords.Add(hasUv ? uvBuffer[i * 2 + 1] : 0f);
             }
 
             string? texture = model.TextureFor(mesh);
@@ -144,11 +148,20 @@ public sealed class TileMesh
     }
 }
 
-/// <summary>Accumulated stage geometry in world space.</summary>
+/// <summary>Accumulated stage geometry in world space, grouped by texture.</summary>
+/// <remarks>
+/// Grouping happens here rather than in the renderer because a stage draws from
+/// dozens of textures and thousands of tiles: sorting once at build time turns
+/// what would be a per-tile texture switch into one draw call per texture.
+/// </remarks>
 public sealed class StageBatch
 {
     public List<float> Positions { get; } = [];
+    public List<float> TexCoords { get; } = [];
     public List<int> Indices { get; } = [];
+
+    /// <summary>Index ranges keyed by texture name; the empty key is untextured.</summary>
+    public Dictionary<string, List<int>> IndicesByTexture { get; } = [];
 
     public float MinX { get; private set; } = float.MaxValue;
     public float MaxX { get; private set; } = float.MinValue;
@@ -161,20 +174,33 @@ public sealed class StageBatch
     public void Add(TileMesh mesh, float offsetX, float offsetY, float depth)
     {
         int baseIndex = Positions.Count / 3;
-        for (int i = 0; i < mesh.Positions.Length; i += 3)
+        for (int i = 0, v = 0; i < mesh.Positions.Length; i += 3, v += 2)
         {
             float x = mesh.Positions[i] + offsetX;
             float y = mesh.Positions[i + 1] + offsetY;
             Positions.Add(x);
             Positions.Add(y);
             Positions.Add(mesh.Positions[i + 2] + depth);
+            TexCoords.Add(mesh.TexCoords[v]);
+            TexCoords.Add(mesh.TexCoords[v + 1]);
 
             if (x < MinX) MinX = x;
             if (x > MaxX) MaxX = x;
             if (y < MinY) MinY = y;
             if (y > MaxY) MaxY = y;
         }
-        foreach (int index in mesh.Indices)
-            Indices.Add(baseIndex + index);
+
+        for (int t = 0; t < mesh.TriangleTextures.Length; t++)
+        {
+            string key = mesh.TriangleTextures[t] ?? "";
+            if (!IndicesByTexture.TryGetValue(key, out var list))
+                IndicesByTexture[key] = list = [];
+            for (int k = 0; k < 3; k++)
+            {
+                int index = baseIndex + mesh.Indices[t * 3 + k];
+                list.Add(index);
+                Indices.Add(index);
+            }
+        }
     }
 }

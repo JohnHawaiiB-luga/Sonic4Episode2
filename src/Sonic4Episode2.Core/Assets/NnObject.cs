@@ -142,10 +142,21 @@ public sealed class NnVertexList
         (VertexFormat.TexCoord, 8),
     ];
 
-    public void ReadPositions(Span<float> destination)
+    public void ReadPositions(Span<float> destination) =>
+        ReadAttribute(VertexFormat.Position, 3, destination);
+
+    /// <summary>Texture coordinates, or false when the format carries none.</summary>
+    public bool ReadTexCoords(Span<float> destination)
     {
-        int at = AttributeOffset(VertexFormat.Position);
-        if (at < 0) throw new NnException("vertex list has no positions");
+        if (AttributeOffset(VertexFormat.TexCoord) < 0) return false;
+        ReadAttribute(VertexFormat.TexCoord, 2, destination);
+        return true;
+    }
+
+    private void ReadAttribute(VertexFormat attribute, int components, Span<float> destination)
+    {
+        int at = AttributeOffset(attribute);
+        if (at < 0) throw new NnException($"vertex list has no {attribute}");
         var s = _data.Span;
         int start = NnFile.DataBase + BufferOffset;
         if (start < 0 || start + (long)Stride * Count > s.Length)
@@ -154,12 +165,9 @@ public sealed class NnVertexList
         for (int i = 0; i < Count; i++)
         {
             int p = start + i * Stride + at;
-            destination[i * 3 + 0] = BitConverter.Int32BitsToSingle(
-                BinaryPrimitives.ReadInt32LittleEndian(s[p..]));
-            destination[i * 3 + 1] = BitConverter.Int32BitsToSingle(
-                BinaryPrimitives.ReadInt32LittleEndian(s[(p + 4)..]));
-            destination[i * 3 + 2] = BitConverter.Int32BitsToSingle(
-                BinaryPrimitives.ReadInt32LittleEndian(s[(p + 8)..]));
+            for (int c = 0; c < components; c++)
+                destination[i * components + c] = BitConverter.Int32BitsToSingle(
+                    BinaryPrimitives.ReadInt32LittleEndian(s[(p + c * 4)..]));
         }
     }
 }
