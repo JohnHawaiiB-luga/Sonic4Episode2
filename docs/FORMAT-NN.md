@@ -442,7 +442,29 @@ which is the dangerous kind of wrong.
 
 The weights say *how much* each of several matrices moves a vertex. What says
 *which* matrices is the palette that `n_mtxpal` counts — 99 of them on Sonic's 109
-nodes — and that is not decoded. With it, a character can be posed and animated.
+nodes — and it is **not decoded**.
+
+The object header counts palettes but carries no offset for them, so they live
+inside a subobject. A subobject is 20 bytes and only three of its five dwords are
+read: flags, mesh count, mesh offset. The remaining two are the obvious candidates.
+
+**A lead that does not hold up, recorded so nobody spends the afternoon on it
+twice.** On Sonic those two dwords read `5` and `0x1062C`, and `0x1062C` holds
+`0, 1, 2, 3, 4` immediately before the subobject record — exactly what a count and
+a palette of node indices should look like. Across the build it falls apart:
+
+| Check | Result |
+|-------|--------|
+| Palette offset lands inside the file | 4,955/4,955 |
+| Subobject counts sum to the header's `n_mtxpal` | **1,371/3,546** |
+| Palette entries index a valid node | **5,378/10,080** |
+
+Two of three are near chance. So either the palette is somewhere else, or those
+dwords mean something else and Sonic's `0,1,2,3,4` is a coincidence of a
+five-element array of small numbers. The next attempt should start from the
+engine's own model loader rather than from the data — the technique that settled
+collision addressing, the object table and the spin dash, and which has not failed
+yet.
 
 ## Still open
 
