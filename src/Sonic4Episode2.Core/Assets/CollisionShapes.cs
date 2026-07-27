@@ -37,6 +37,21 @@ public sealed class CollisionShapes
     /// <summary>A full-height cell. Measured over 8.4M height bytes.</summary>
     public const int FullHeight = 32;
 
+    /// <summary>
+    /// Pixels per height unit. A cell is 64 columns wide but only 32 units tall,
+    /// so heights are stored at half resolution.
+    /// </summary>
+    /// <remarks>
+    /// This is not an assumption from the 64/32 ratio. Fitting <c>.DI</c>'s stored
+    /// surface angles against slopes measured from <c>.DF</c> only agrees when
+    /// heights are scaled by 2: across 23,474 shaped cells the median error is
+    /// 5.7 degrees at this scale versus 16.9 at 1:1.
+    /// </remarks>
+    public const int PixelsPerHeightUnit = 2;
+
+    /// <summary>Degrees per <c>.DI</c> angle unit — a byte spans a full turn.</summary>
+    public const float DegreesPerAngleUnit = 360f / 256f;
+
     private readonly byte[] _data;
     private readonly int _recordSize;
     private readonly ushort[] _index;
@@ -95,4 +110,30 @@ public sealed class CollisionShapes
         if ((uint)cell >= CellsPerRecord || (uint)column >= HeightsPerCell) return 0;
         return _data[4 + record * _recordSize + cell * HeightsPerCell + column];
     }
+
+    /// <summary>
+    /// The stored surface angle of a cell, as the raw byte — a full turn per 256.
+    /// </summary>
+    /// <remarks>
+    /// Only meaningful on a <c>.DI</c> file, whose 64-byte records hold one angle
+    /// per cell rather than a height field.
+    /// </remarks>
+    public int AngleUnits(int attributeId, int cell)
+    {
+        int record = RecordFor(attributeId);
+        if (record < 0 || _recordSize != CellsPerRecord) return 0;
+        if ((uint)cell >= CellsPerRecord) return 0;
+        return _data[4 + record * _recordSize + cell];
+    }
+
+    /// <summary>
+    /// The surface angle of a cell in degrees, counter-clockwise from flat, in a
+    /// Y-up frame. Flat ground reads 0.
+    /// </summary>
+    /// <remarks>
+    /// The stored byte runs the other way, because the grid's Y grows downward
+    /// while the angle is measured against a world whose Y grows up.
+    /// </remarks>
+    public float AngleDegrees(int attributeId, int cell) =>
+        -AngleUnits(attributeId, cell) * DegreesPerAngleUnit;
 }

@@ -103,8 +103,8 @@ public sealed class GameEngine
         var batch = new StageBatch();
         var placements = new List<Placement>();
 
-        // Ground shapes live in the zone's ATTR archive, beside the act.
-        CollisionShapes? shapes = LoadShapes(actPath);
+        // Ground shapes and their angles live in the zone's ATTR archive.
+        var (shapes, angles) = LoadShapes(actPath);
         StageGrid? attributeGrid = null;
 
         foreach (var entry in archive.Entries)
@@ -137,7 +137,7 @@ public sealed class GameEngine
         }
 
         if (attributeGrid is not null)
-            Collision = CollisionMap.FromGrid(attributeGrid, shapes);
+            Collision = CollisionMap.FromGrid(attributeGrid, shapes, angles);
 
         Stage = batch;
         Placements = placements;
@@ -146,7 +146,8 @@ public sealed class GameEngine
         Status = $"{assembler.TilesPlaced} tiles, {batch.VertexCount:N0} vertices, " +
                  $"{batch.TriangleCount:N0} triangles, " +
                  $"{identified}/{placements.Count} placements identified" +
-                 (Collision?.HasShapes == true ? ", height fields" : ", blocky collision");
+                 (Collision?.HasShapes == true ? ", height fields" : ", blocky collision") +
+                 (Collision?.HasAngles == true ? " with angles" : "");
 
         // The map is a task like anything else, so it obeys pause levels and is
         // torn down with the scene rather than by special-case code.
@@ -166,30 +167,37 @@ public sealed class GameEngine
         }
     }
 
-    /// <summary>Reads the zone's height fields, if the ATTR archive is there.</summary>
-    private static CollisionShapes? LoadShapes(string actPath)
+    /// <summary>
+    /// Reads the zone's height fields and surface angles, if the ATTR archive is
+    /// there. Either may be absent; the map degrades rather than failing.
+    /// </summary>
+    private static (CollisionShapes? Shapes, CollisionShapes? Angles) LoadShapes(string actPath)
     {
         string? directory = Path.GetDirectoryName(actPath);
-        if (directory is null) return null;
+        if (directory is null) return (null, null);
 
         foreach (string file in Directory.EnumerateFiles(directory, "*_ATTR.AMB"))
         {
             try
             {
                 var archive = AmbArchive.Load(file);
+                CollisionShapes? shapes = null, angles = null;
                 foreach (var entry in archive.Entries)
                 {
-                    if (!entry.Name.EndsWith(".DF", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    return CollisionShapes.Parse(archive.Read(entry).Span, 4096);
+                    if (entry.Name.EndsWith(".DF", StringComparison.OrdinalIgnoreCase))
+                        shapes = CollisionShapes.Parse(archive.Read(entry).Span, 4096);
+                    else if (entry.Name.EndsWith(".DI", StringComparison.OrdinalIgnoreCase))
+                        angles = CollisionShapes.Parse(archive.Read(entry).Span,
+                                                       CollisionShapes.CellsPerRecord);
                 }
+                if (shapes is not null) return (shapes, angles);
             }
             catch (AmbException)
             {
                 // A zone without usable shape data falls back to blocky ground.
             }
         }
-        return null;
+        return (null, null);
     }
 
     private void ExitStage()

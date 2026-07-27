@@ -23,19 +23,24 @@ public sealed class CollisionMap
     private readonly bool[] _solid;
     private readonly ushort[] _attribute;
     private readonly CollisionShapes? _shapes;
+    private readonly CollisionShapes? _angles;
 
-    private CollisionMap(int width, int height, bool[] solid,
-                         ushort[] attribute, CollisionShapes? shapes)
+    private CollisionMap(int width, int height, bool[] solid, ushort[] attribute,
+                         CollisionShapes? shapes, CollisionShapes? angles)
     {
         Width = width;
         Height = height;
         _solid = solid;
         _attribute = attribute;
         _shapes = shapes;
+        _angles = angles;
     }
 
     /// <summary>True when real height fields are driving the ground.</summary>
     public bool HasShapes => _shapes is not null;
+
+    /// <summary>True when the stage's stored surface angles are available.</summary>
+    public bool HasAngles => _angles is not null;
 
     public int Width { get; }
     public int Height { get; }
@@ -43,7 +48,9 @@ public sealed class CollisionMap
     /// <summary>Cell size in world units, matching <see cref="StageAssembler.CellSize"/>.</summary>
     public float CellSize => StageAssembler.CellSize;
 
-    public static CollisionMap FromGrid(StageGrid attributes, CollisionShapes? shapes = null)
+    public static CollisionMap FromGrid(StageGrid attributes,
+                                        CollisionShapes? shapes = null,
+                                        CollisionShapes? angles = null)
     {
         int count = attributes.Width * attributes.Height;
         var solid = new bool[count];
@@ -57,7 +64,8 @@ public sealed class CollisionMap
             ids[at] = (ushort)(raw & 0x0FFF);
             solid[at] = raw != 0;
         }
-        return new CollisionMap(attributes.Width, attributes.Height, solid, ids, shapes);
+        return new CollisionMap(attributes.Width, attributes.Height, solid, ids,
+                                shapes, angles);
     }
 
     /// <summary>The attribute id of a cell, or 0 when empty or out of bounds.</summary>
@@ -114,6 +122,35 @@ public sealed class CollisionMap
             // fraction above the cell's bottom edge.
             float bottom = -(y + 1) * CellSize;
             return bottom + height / (float)CollisionShapes.FullHeight * CellSize;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The slope of the ground under a point, in degrees, counter-clockwise from
+    /// flat. Null when there is no ground within reach or no angle data.
+    /// </summary>
+    /// <remarks>
+    /// This is the angle the stage stores rather than one measured off the height
+    /// field, so it is what the original game steered its physics by. A cell that
+    /// curves has one angle for the whole cell, which is the game's own
+    /// approximation and not a loss introduced here.
+    /// </remarks>
+    public float? SurfaceAngleAt(float worldX, float worldY, int maxCells = 4)
+    {
+        if (_angles is null) return null;
+
+        var (cellX, cellY) = CellAt(worldX, worldY);
+        for (int i = 0; i <= maxCells; i++)
+        {
+            int y = cellY + i;
+            if (!IsSolid(cellX, y)) continue;
+
+            int attribute = AttributeAt(cellX, y);
+            if (attribute == 0) continue;
+            if (_shapes is not null && SampleHeight(cellX, y, worldX) <= 0) continue;
+
+            return _angles.AngleDegrees(attribute, (y & 7) * 8 + (cellX & 7));
         }
         return null;
     }

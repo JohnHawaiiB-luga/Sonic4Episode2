@@ -60,6 +60,7 @@ whole multiples of 4096 or 64. They need a separate path and are not handled her
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import struct
 import sys
@@ -206,6 +207,89 @@ def cmd_show(args) -> int:
     return 0
 
 
+# A cell spans 64 columns but heights only reach 32, so a height unit is two
+# pixels. Fitting the stored .DI angles against slopes measured off .DF is what
+# establishes that: the agreement is far better at this scale than at 1:1.
+PIXELS_PER_HEIGHT_UNIT = 2
+DEGREES_PER_ANGLE_UNIT = 360.0 / 256.0
+
+
+def fitted_slope(heights: list[int]) -> float | None:
+    """Least-squares gradient of a cell's surface, in height units per column."""
+    pts = [(x, v) for x, v in enumerate(heights) if 0 < v < 32]
+    if len(pts) < 8:
+        return None
+    n = len(pts)
+    sx = sum(x for x, _ in pts)
+    sy = sum(v for _, v in pts)
+    sxx = sum(x * x for x, _ in pts)
+    sxy = sum(x * v for x, v in pts)
+    den = n * sxx - sx * sx
+    return None if den == 0 else (n * sxy - sx * sy) / den
+
+
+def angle_errors(df: CollisionFile, di: CollisionFile) -> list[float]:
+    """How far each stored angle sits from the slope its height field implies."""
+    errors = []
+    for attr_id in range(min(len(df.index), len(di.index))):
+        rd, ri = df.record_for(attr_id), di.record_for(attr_id)
+        if rd is None or ri is None:
+            continue
+        angles = di.cell_bytes(ri)
+        for cell in range(CELLS_PER_RECORD):
+            heights = df.heights(rd, cell)
+            if max(heights) == 0 or min(heights) >= 32:
+                continue
+            slope = fitted_slope(heights)
+            if slope is None:
+                continue
+            want = math.degrees(math.atan(slope * PIXELS_PER_HEIGHT_UNIT)) % 360
+            got = (-angles[cell] * DEGREES_PER_ANGLE_UNIT) % 360
+            errors.append(abs(((got - want + 180) % 360) - 180))
+    return errors
+
+
+def cmd_angles(args) -> int:
+    """Check `.DI` against `.DF` — they describe the same surfaces two ways."""
+    total: list[float] = []
+    for path in amb._iter_amb_files(args.root):
+        if not os.path.basename(path).upper().endswith("_ATTR.AMB"):
+            continue
+        try:
+            archive = amb.load(path)
+        except Exception:
+            continue
+        files = {}
+        for entry in archive:
+            kind = os.path.splitext(entry.name)[1].upper()
+            if kind in (".DF", ".DI"):
+                try:
+                    files[kind] = parse(kind, archive.read(entry))
+                except CollisionError:
+                    pass
+        if ".DF" not in files or ".DI" not in files:
+            continue
+        errors = angle_errors(files[".DF"], files[".DI"])
+        if not errors:
+            continue
+        total += errors
+        errors.sort()
+        within = sum(1 for e in errors if e < 15) / len(errors) * 100
+        print(f"  {os.path.relpath(path, args.root):46s} {len(errors):5d} cells, "
+              f"median {errors[len(errors) // 2]:5.1f} deg, within 15 deg {within:3.0f}%")
+
+    if not total:
+        print("no paired .DF/.DI found")
+        return 1
+    total.sort()
+    within15 = sum(1 for e in total if e < 15) / len(total) * 100
+    within30 = sum(1 for e in total if e < 30) / len(total) * 100
+    print()
+    print(f"{len(total)} shaped cells: median {total[len(total) // 2]:.1f} deg, "
+          f"within 15 deg {within15:.0f}%, within 30 deg {within30:.0f}%")
+    return 0
+
+
 def cmd_verify(args) -> int:
     ok = bad = 0
     failures: list[str] = []
@@ -251,6 +335,11 @@ def main(argv=None) -> int:
     p = sub.add_parser("show", help="summarise one zone's collision archive")
     p.add_argument("archive")
     p.set_defaults(func=cmd_show)
+
+    p = sub.add_parser("angles",
+                       help="check .DI surface angles against the .DF height fields")
+    p.add_argument("root", nargs="?", default=".")
+    p.set_defaults(func=cmd_angles)
 
     p = sub.add_parser("verify", help="parse every stage collision file under a tree")
     p.add_argument("root")
