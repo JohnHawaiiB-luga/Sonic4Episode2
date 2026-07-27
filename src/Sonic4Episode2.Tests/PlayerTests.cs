@@ -102,10 +102,12 @@ public class PlayerTests
         for (int i = 0; i < 60; i++) player.Update();
 
         player.InputX = 1f;
-        for (int i = 0; i < 200; i++) player.Update();
+        // Episode II accelerates at 0.0354 px/frame, so reaching 9 px/frame takes
+        // about 254 frames. The placeholder tuning got there in well under 200.
+        for (int i = 0; i < 400; i++) player.Update();
 
-        Assert.True(player.Velocity.X <= Player.MaxSpeed + 0.001f);
-        Assert.True(player.Velocity.X > Player.MaxSpeed - 0.5f);
+        Assert.True(player.Velocity.X <= player.MaxSpeed + 0.001f);
+        Assert.True(player.Velocity.X > player.MaxSpeed - 0.01f);
     }
 
     [Fact]

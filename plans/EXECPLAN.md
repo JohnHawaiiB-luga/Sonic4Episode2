@@ -113,16 +113,16 @@ task count, and are deliberately pessimistic.
 |-------|-------:|-----:|-------------:|
 | 1. Asset formats | 12% | ~95% | 11.4% |
 | 2. Geometry, audio, shaders | 18% | ~95% | 17.1% |
-| 3. Engine port | 20% | ~88% | 17.6% |
-| 4. Game logic | 35% | ~12% | 4.2% |
+| 3. Engine port | 20% | ~90% | 18.0% |
+| 4. Game logic | 35% | ~20% | 7.0% |
 | 5. Mobile targets | 15% | ~3% | 0.5% |
-| **Total** | | | **≈ 51%** |
+| **Total** | | | **≈ 54%** |
 
 **Runnable: a playable slice.** You can run and jump on Zone 1 Act 1's real
 geometry, with collision from the stage's own attribute layer, following real
-per-column height fields rather than boxes. The physics constants are still
-placeholders, not recovered values, and nothing is spawned yet - so this is the
-first rung of phase 4, not the end of it.
+per-column height fields rather than boxes. The physics constants are Episode II's own,
+read out of its player parameter table, so a jump goes where the original sends
+it. Nothing is spawned yet - so this is the first rung of phase 4, not the end.
 
 What moved phase 4 off the floor is that **the object table is now readable**.
 `Sonic.exe:0x007031C8` maps each `.EV` object id to the function that spawns it -
@@ -213,9 +213,9 @@ a MonoGame window. 38 tests passing.
 
 - [x] Recover Episode II's object table from `Sonic.exe` - **id to spawn
       function, sizes, priority, partial names**
-- [x] A player with gravity, ground/wall collision and jumping - **placeholder
-      constants, not Episode II's own**
-- [ ] Recover the real physics values from the binary
+- [x] A player with gravity, ground/wall collision and jumping
+- [x] Recover the real physics values from the binary - **all seven modes, at
+      `0x00710520`**
 - [ ] Tails co-op and the combo moves
 - [ ] Zones, acts, bosses, special stages
 - [ ] Episode Metal

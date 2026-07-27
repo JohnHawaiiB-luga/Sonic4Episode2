@@ -1,4 +1,5 @@
 using System.Numerics;
+using Sonic4Episode2.Core.Assets;
 
 namespace Sonic4Episode2.Core.Engine;
 
@@ -6,12 +7,11 @@ namespace Sonic4Episode2.Core.Engine;
 /// A player that runs, jumps and collides with the stage.
 /// </summary>
 /// <remarks>
-/// <b>These constants are placeholders, not recovered values.</b> They were
-/// chosen to feel roughly right at this scale — a cell is 20 world units and the
-/// player is one cell wide — and they are not Episode II's numbers. The real
-/// figures live in the binary's player code and have not been reverse engineered
-/// yet. Anything that depends on Sonic actually feeling like Sonic depends on
-/// replacing them.
+/// The tuning is <b>Episode II's own</b>, read out of its player parameter table
+/// — see <see cref="PlayerPhysics"/>. Those values are in game pixels per frame
+/// at 60 Hz, so everything here converts through
+/// <see cref="PlayerPhysics.WorldPerPixel"/> and this object moves in world units
+/// like everything else.
 /// <para>
 /// The structure is what matters here: horizontal motion resolved separately
 /// from vertical, ground checked from the feet, ceiling from the head, and
@@ -21,26 +21,40 @@ namespace Sonic4Episode2.Core.Engine;
 /// </remarks>
 public sealed class Player : GameObject
 {
-    public const float Width = 16f;
-    public const float Height = 36f;
-
-    // Placeholder tuning; see the class note.
-    public const float Acceleration = 0.35f;
-    public const float Friction = 0.28f;
-    public const float MaxSpeed = 7.0f;
-    public const float Gravity = 0.42f;
-    public const float JumpVelocity = 9.4f;
-    public const float TerminalVelocity = 18f;
+    /// <summary>Terrain box, from Episode I's player: 12 x 25 game pixels.</summary>
+    public static float Width => 12f * PlayerPhysics.WorldPerPixel;
+    public static float Height => 25f * PlayerPhysics.WorldPerPixel;
 
     private readonly CollisionMap _collision;
+    private readonly PlayerPhysics _physics;
+    private readonly float _scale;
 
-    public Player(CollisionMap collision)
+    public Player(CollisionMap collision) : this(collision, PlayerPhysics.Sonic) { }
+
+    public Player(CollisionMap collision, PlayerPhysics physics)
     {
         _collision = collision;
+        _physics = physics;
+        _scale = PlayerPhysics.WorldPerPixel;
         Name = "player";
         OnUpdate = _ => Think();
         OnMove = _ => Move();
     }
+
+    /// <summary>The tuning this player runs on.</summary>
+    public PlayerPhysics Physics => _physics;
+
+    // Every constant in the table is a game-pixel figure; these are the world-unit
+    // equivalents this object actually integrates with.
+    public float Acceleration => _physics.GroundAcceleration * _scale;
+    public float Friction => _physics.GroundDeceleration * _scale;
+    public float MaxSpeed => _physics.TopSpeed * _scale;
+    public float Gravity => _physics.Gravity * _scale;
+    public float JumpVelocity => _physics.JumpImpulse * _scale;
+    public float TerminalVelocity => _physics.TerminalVelocity * _scale;
+    public float AirAcceleration => _physics.AirAcceleration * _scale;
+    public float AirSpeedMax => _physics.AirSpeedMax * _scale;
+    public float AirDrag => _physics.AirDrag * _scale;
 
     public Vector2 Velocity;
     public bool OnGround { get; private set; }
@@ -51,32 +65,56 @@ public sealed class Player : GameObject
     public bool InputJump { get; set; }
 
     private bool _jumpHeld;
+    private bool _cuttingJump;
 
     private void Think()
     {
+        // Ground and air are separately tuned in the table, and the difference is
+        // large - on the ground Sonic accelerates at 0.0354 px/frame and in the
+        // air at 0.0625, with a much weaker brake.
+        float accel = OnGround ? Acceleration : AirAcceleration;
+        float drag = OnGround ? Friction : AirDrag;
+        float cap = OnGround ? MaxSpeed : AirSpeedMax;
+
         if (InputX != 0f)
         {
-            Velocity.X += InputX * Acceleration;
+            Velocity.X += InputX * accel;
             FacingLeft = InputX < 0f;
         }
         else
         {
-            // Friction only bleeds speed toward zero; it must never push the
-            // player backwards through it.
-            float drop = MathF.Min(MathF.Abs(Velocity.X), Friction);
+            // Drag only bleeds speed toward zero; it must never push the player
+            // backwards through it.
+            float drop = MathF.Min(MathF.Abs(Velocity.X), drag);
             Velocity.X -= MathF.Sign(Velocity.X) * drop;
         }
 
-        Velocity.X = Math.Clamp(Velocity.X, -MaxSpeed, MaxSpeed);
+        Velocity.X = Math.Clamp(Velocity.X, -cap, cap);
 
         // Edge-triggered so holding jump does not re-fire on landing.
         if (InputJump && !_jumpHeld && OnGround)
+        {
             Velocity.Y = JumpVelocity;
+            _cuttingJump = false;
+        }
         _jumpHeld = InputJump;
 
+        // Episode II does not clamp the rise on release. It sets a flag when the
+        // button comes up while still rising faster than 4 px/frame, and that flag
+        // applies gravity a second time each frame until the rise ends.
+        if (!InputJump && Velocity.Y > JumpCutThreshold) _cuttingJump = true;
+        if (Velocity.Y <= 0f) _cuttingJump = false;
+
         Velocity.Y -= Gravity;
+        if (_cuttingJump) Velocity.Y -= Gravity;
         if (Velocity.Y < -TerminalVelocity) Velocity.Y = -TerminalVelocity;
     }
+
+    /// <summary>
+    /// Rise speed above which releasing jump cuts it short — 4 game pixels per
+    /// frame, which is <c>16384</c> in Episode I's fixed point.
+    /// </summary>
+    private float JumpCutThreshold => 4f * _scale;
 
     private void Move()
     {
