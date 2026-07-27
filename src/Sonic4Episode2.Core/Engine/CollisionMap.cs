@@ -12,24 +12,30 @@ namespace Sonic4Episode2.Core.Engine;
 /// ceilings and blockers. Collision therefore has to come from `_ATTR_`, not
 /// from what you can see.
 /// <para>
-/// <b>This is deliberately an approximation.</b> A non-zero attribute is treated
-/// as fully solid, which gives blocky collision: correct for flat ground and
-/// walls, wrong on slopes and curves. The real shape data lives in the `.DF`
-/// files — 64 bytes per cell, one height byte per pixel — which are not decoded
-/// yet. Everything here is structured so that swapping a height field in later
-/// changes <see cref="GroundHeightAt"/> and nothing else.
+/// When a stage's <c>.DF</c> shape file is supplied, the ground follows its real
+/// per-column heights, so slopes and curves work. Without one the map falls back
+/// to treating any non-zero attribute as fully solid, which is correct for flat
+/// ground and walls and wrong on everything shaped.
 /// </para>
 /// </remarks>
 public sealed class CollisionMap
 {
     private readonly bool[] _solid;
+    private readonly ushort[] _attribute;
+    private readonly CollisionShapes? _shapes;
 
-    private CollisionMap(int width, int height, bool[] solid)
+    private CollisionMap(int width, int height, bool[] solid,
+                         ushort[] attribute, CollisionShapes? shapes)
     {
         Width = width;
         Height = height;
         _solid = solid;
+        _attribute = attribute;
+        _shapes = shapes;
     }
+
+    /// <summary>True when real height fields are driving the ground.</summary>
+    public bool HasShapes => _shapes is not null;
 
     public int Width { get; }
     public int Height { get; }
@@ -37,13 +43,28 @@ public sealed class CollisionMap
     /// <summary>Cell size in world units, matching <see cref="StageAssembler.CellSize"/>.</summary>
     public float CellSize => StageAssembler.CellSize;
 
-    public static CollisionMap FromGrid(StageGrid attributes)
+    public static CollisionMap FromGrid(StageGrid attributes, CollisionShapes? shapes = null)
     {
-        var solid = new bool[attributes.Width * attributes.Height];
+        int count = attributes.Width * attributes.Height;
+        var solid = new bool[count];
+        var ids = new ushort[count];
         for (int y = 0; y < attributes.Height; y++)
         for (int x = 0; x < attributes.Width; x++)
-            solid[y * attributes.Width + x] = attributes[x, y] != 0;
-        return new CollisionMap(attributes.Width, attributes.Height, solid);
+        {
+            int at = y * attributes.Width + x;
+            ushort raw = attributes[x, y];
+            // Transform bits live in the top nibble, same as a tile cell.
+            ids[at] = (ushort)(raw & 0x0FFF);
+            solid[at] = raw != 0;
+        }
+        return new CollisionMap(attributes.Width, attributes.Height, solid, ids, shapes);
+    }
+
+    /// <summary>The attribute id of a cell, or 0 when empty or out of bounds.</summary>
+    public int AttributeAt(int cellX, int cellY)
+    {
+        if (cellX < 0 || cellX >= Width || cellY < 0 || cellY >= Height) return 0;
+        return _attribute[cellY * Width + cellX];
     }
 
     public bool IsSolid(int cellX, int cellY)
@@ -81,10 +102,37 @@ public sealed class CollisionMap
         {
             int y = cellY + i;
             if (!IsSolid(cellX, y)) continue;
-            // The top of cell y in world space. Once .DF is decoded this is
-            // where a per-pixel height lookup replaces the flat cell top.
-            return -y * CellSize;
+
+            if (_shapes is null)
+                return -y * CellSize;          // flat cell top
+
+            int height = SampleHeight(cellX, y, worldX);
+            if (height <= 0) continue;         // shaped cell that is empty here
+
+            // Heights run 0 (cell floor) to 32 (cell ceiling), and world Y grows
+            // upward while the grid grows downward, so the surface sits that
+            // fraction above the cell's bottom edge.
+            float bottom = -(y + 1) * CellSize;
+            return bottom + height / (float)CollisionShapes.FullHeight * CellSize;
         }
         return null;
+    }
+
+    /// <summary>The height field's value at a world X within one cell.</summary>
+    private int SampleHeight(int cellX, int cellY, float worldX)
+    {
+        if (_shapes is null) return CollisionShapes.FullHeight;
+
+        int attribute = AttributeAt(cellX, cellY);
+        if (attribute == 0) return 0;
+
+        // A record holds an 8x8 block of cells; this is the cell's slot in it.
+        int cell = (cellY & 7) * 8 + (cellX & 7);
+
+        float local = worldX - cellX * CellSize;
+        int column = (int)(local / CellSize * CollisionShapes.HeightsPerCell);
+        column = Math.Clamp(column, 0, CollisionShapes.HeightsPerCell - 1);
+
+        return _shapes.Height(attribute, cell, column);
     }
 }

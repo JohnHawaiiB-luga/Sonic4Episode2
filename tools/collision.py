@@ -12,15 +12,27 @@ is how a stage's `_ATTR_` cell id selects a record — see the note at the botto
 
 ## Layout
 
-    0x00  u16   count      (1535 for every Zone 1 file)
+    0x00  u16   chips        (1535 for every Zone 1 file)
     0x02  u16   records
-    0x04  u8    reserved[count * 2]   - zero in every observed file
-          ...   records[records][size]
+    0x04        records[records][size]
+    ...   u16   chipIndex[chips]      - ATTR cell id -> record
 
-with `size` = 4096 for `.DF` and 64 for `.DI` and `.AT`. The equation
-`4 + count*2 + records*size == filesize` is satisfied by all 39 files, across
-sizes from 4 KB to 327 KB, which is what makes the split trustworthy even though
-the reserved block is empty.
+with `size` = 4096 for `.DF` and 64 for `.DI` and `.AT`.
+
+**The records come first and the index table is last.** An earlier reading here
+had it the other way round, which put the index where record data actually lives
+and made it look like 3,070 bytes of zeros - the arithmetic works either way, so
+the file size alone cannot tell you which. The order is settled by the engine's
+own setup routine at `Sonic.exe:0x00560349`:
+
+```asm
+movzx ecx, word [eax + 2]     ; the second u16
+shl   ecx, 0xc                ; times 4096, the .DF record size
+lea   ebp, [eax + 4]          ; region A = records, at +4
+lea   eax, [ecx + eax + 4]    ; region B = index, after the records
+```
+
+It does the same with `shl 6` (times 64) for `.DI` and `.AT`.
 
 ## Height records
 
@@ -75,10 +87,26 @@ class CollisionError(Exception):
 class CollisionFile:
     """One `.DF`, `.DI` or `.AT`."""
 
-    def __init__(self, kind: str, count: int, records: list[bytes]):
+    def __init__(self, kind: str, count: int, records: list[bytes],
+                 index: list[int] | None = None):
         self.kind = kind
         self.count = count
         self.records = records
+        # Maps an ATTR cell id straight to a record. Verified: every one of the
+        # 256 ids Zone 1 Act 1 uses lands on a valid record.
+        self.index = index or []
+
+    def record_for(self, attr_id: int) -> int | None:
+        """The record an `_ATTR_` cell id selects, or None if out of range."""
+        if not 0 <= attr_id < len(self.index):
+            return None
+        record = self.index[attr_id]
+        return record if 0 <= record < len(self.records) else None
+
+    def heights_for(self, attr_id: int, cell: int) -> list[int] | None:
+        """Column heights for an ATTR id, resolved through the index."""
+        record = self.record_for(attr_id)
+        return None if record is None else self.heights(record, cell)
 
     @property
     def record_size(self) -> int:
@@ -114,15 +142,17 @@ def parse(kind: str, data: bytes) -> CollisionFile:
 
     count, record_count = struct.unpack_from("<HH", data, 0)
     size = RECORD_SIZES[kind]
-    expected = 4 + count * 2 + record_count * size
+    expected = 4 + record_count * size + count * 2
     if expected != len(data):
         raise CollisionError(
             f"layout mismatch: count={count} records={record_count} "
             f"implies {expected} bytes, file has {len(data)}")
 
-    base = 4 + count * 2
-    records = [data[base + i * size: base + (i + 1) * size] for i in range(record_count)]
-    return CollisionFile(kind, count, records)
+    records = [data[4 + i * size: 4 + (i + 1) * size] for i in range(record_count)]
+
+    table_at = 4 + record_count * size
+    index = list(struct.unpack_from(f"<{count}H", data, table_at))
+    return CollisionFile(kind, count, records, index)
 
 
 def classify(heights: list[int]) -> str:

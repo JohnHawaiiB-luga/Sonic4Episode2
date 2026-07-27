@@ -111,12 +111,12 @@ task count, and are deliberately pessimistic.
 
 | Phase | Weight | Done | Contribution |
 |-------|-------:|-----:|-------------:|
-| 1. Asset formats | 12% | ~92% | 11.0% |
+| 1. Asset formats | 12% | ~95% | 11.4% |
 | 2. Geometry, audio, shaders | 18% | ~95% | 17.1% |
-| 3. Engine port | 20% | ~80% | 16.0% |
-| 4. Game logic | 35% | ~3% | 1.1% |
+| 3. Engine port | 20% | ~85% | 17.0% |
+| 4. Game logic | 35% | ~5% | 1.8% |
 | 5. Mobile targets | 15% | ~3% | 0.5% |
-| **Total** | | | **≈ 46%** |
+| **Total** | | | **≈ 48%** |
 
 **Runnable: a playable slice.** You can run and jump on Zone 1 Act 1's real
 geometry, with collision from the stage's own attribute layer. The physics
@@ -153,7 +153,7 @@ no amount of format work shortens them.
 - [ ] `.AME` effect definitions
 - [ ] `.DC` / `.RG` — share the `.EV` block grid, different record size
 - [x] `.DF`/`.DI`/`.AT` stage collision - 39/39 parse; `docs/FORMAT-COLLISION.md`
-- [ ] The `_ATTR_` id to collision record mapping (needs the binary)
+- [x] The `_ATTR_` id to collision record mapping - **solved from the binary**
 - [ ] Unconfirmed minor formats: `.MFS` `.LTS` `.SSS` `.GPB`
 
 Gate: every byte of every archive is accounted for by a decoder or an explicit

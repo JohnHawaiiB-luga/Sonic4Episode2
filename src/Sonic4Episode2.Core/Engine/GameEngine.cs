@@ -98,6 +98,10 @@ public sealed class GameEngine
         var batch = new StageBatch();
         var placements = new List<Placement>();
 
+        // Ground shapes live in the zone's ATTR archive, beside the act.
+        CollisionShapes? shapes = LoadShapes(actPath);
+        StageGrid? attributeGrid = null;
+
         foreach (var entry in archive.Entries)
         {
             string label = entry.Name.Replace('\\', '/');
@@ -106,8 +110,7 @@ public sealed class GameEngine
             // the visual one: it also carries invisible walls and ceilings.
             if (label.EndsWith("_ATTR_B.MP", StringComparison.OrdinalIgnoreCase))
             {
-                Collision = CollisionMap.FromGrid(
-                    StageGrid.Parse(label, archive.Read(entry).Span));
+                attributeGrid = StageGrid.Parse(label, archive.Read(entry).Span);
                 continue;
             }
             if (label.EndsWith(".EV", StringComparison.OrdinalIgnoreCase))
@@ -128,11 +131,15 @@ public sealed class GameEngine
             assembler.AddLayer(grid, "_B", batch);
         }
 
+        if (attributeGrid is not null)
+            Collision = CollisionMap.FromGrid(attributeGrid, shapes);
+
         Stage = batch;
         Placements = placements;
         StageName = Path.GetFileNameWithoutExtension(actPath);
         Status = $"{assembler.TilesPlaced} tiles, {batch.VertexCount:N0} vertices, " +
-                 $"{batch.TriangleCount:N0} triangles, {placements.Count} placements";
+                 $"{batch.TriangleCount:N0} triangles, {placements.Count} placements" +
+                 (Collision?.HasShapes == true ? ", height fields" : ", blocky collision");
 
         // The map is a task like anything else, so it obeys pause levels and is
         // torn down with the scene rather than by special-case code.
@@ -150,6 +157,32 @@ public sealed class GameEngine
                 Collision.Width * Collision.CellSize * 0.06f,
                 -Collision.Height * Collision.CellSize * 0.1f);
         }
+    }
+
+    /// <summary>Reads the zone's height fields, if the ATTR archive is there.</summary>
+    private static CollisionShapes? LoadShapes(string actPath)
+    {
+        string? directory = Path.GetDirectoryName(actPath);
+        if (directory is null) return null;
+
+        foreach (string file in Directory.EnumerateFiles(directory, "*_ATTR.AMB"))
+        {
+            try
+            {
+                var archive = AmbArchive.Load(file);
+                foreach (var entry in archive.Entries)
+                {
+                    if (!entry.Name.EndsWith(".DF", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    return CollisionShapes.Parse(archive.Read(entry).Span, 4096);
+                }
+            }
+            catch (AmbException)
+            {
+                // A zone without usable shape data falls back to blocky ground.
+            }
+        }
+        return null;
     }
 
     private void ExitStage()
