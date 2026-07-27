@@ -111,23 +111,23 @@ task count, and are deliberately pessimistic.
 
 | Phase | Weight | Done | Contribution |
 |-------|-------:|-----:|-------------:|
-| 1. Asset formats | 12% | ~75% | 9.0% |
-| 2. Geometry, audio, shaders | 18% | ~15% | 2.7% |
+| 1. Asset formats | 12% | ~80% | 9.6% |
+| 2. Geometry, audio, shaders | 18% | ~40% | 7.2% |
 | 3. Engine port | 20% | 0% | 0% |
 | 4. Game logic | 35% | 0% | 0% |
 | 5. Mobile targets | 15% | 0% | 0% |
-| **Total** | | | **≈ 12%** |
+| **Total** | | | **≈ 17%** |
 
 **Runnable code: 0%.** Nothing in this repository executes the game on any
 platform. That number moves off zero in phase 3, not before.
 
 A caveat worth stating plainly, because it is easy to assume otherwise: *the PC
-platform is not already solved.* The original `Sonic.exe` runs on Windows, but
-that is SEGA's binary — the very thing this project exists to replace — and in
-this Beta 8 build it is locked behind a Steam check that fails. Starting from a
-PC build helps because x86 has the best tooling and D3D9 is well documented, not
-because it delivers a working PC target for free. Our first runnable binary will
-be a desktop one, and it does not exist yet.
+platform is not already solved.* The original `Sonic.exe` does run on Windows —
+this Beta 8 copy plays fine, with the Steam check disabled — but that is SEGA's
+binary, the very thing this project exists to replace. Starting from a PC build
+helps because x86 has the best tooling and D3D9 is well documented, not because
+it delivers a working PC target for free. Our first runnable binary will be a
+desktop one, and it does not exist yet.
 
 Phase 1 is nearly finished and is genuinely front-loaded — it is the phase where
 a sibling decompilation helps most. Phases 3 and 4 are where the years live, and

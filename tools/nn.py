@@ -182,6 +182,213 @@ class NnObject:
         )
 
 
+# Vertex format bits, deduced by correlating every observed flag word against its
+# stride across 2,700 vertex lists. Each combination accounts for its stride
+# exactly (0x10003 -> 32, 0x1001b -> 40, 0x10019 -> 28, 0x10001 -> 20).
+VTX_POSITION = 0x00001  # 3 floats
+VTX_NORMAL = 0x00002  # 3 floats
+VTX_DIFFUSE = 0x00008  # 4 bytes
+VTX_SPECULAR = 0x00010  # 4 bytes
+VTX_TEXCOORD = 0x10000  # 2 floats
+
+PRIM_TRIANGLE_STRIP = 0x4810  # the only mode in the entire build
+
+
+class VertexList:
+    """One `NZOB` vertex buffer.
+
+        +0x00  u32  format flags
+        +0x04  u32  unknown — points near the descriptor itself, OPEN
+        +0x08  u32  stride in bytes
+        +0x0C  u32  vertex count
+        +0x10  u32  offset of the vertex buffer
+    """
+
+    SIZE = 0x14
+    __slots__ = ("fmt", "unknown", "stride", "count", "ofs_buffer", "_data", "_base")
+
+    def __init__(self, data: bytes, base: int, offset: int):
+        (self.fmt, self.unknown, self.stride, self.count,
+         self.ofs_buffer) = struct.unpack_from("<5I", data, offset)
+        self._data, self._base = data, base
+
+    @property
+    def has_position(self) -> bool:
+        return bool(self.fmt & VTX_POSITION)
+
+    def positions(self) -> list[tuple[float, float, float]]:
+        """Vertex positions. Position, when present, always sits at offset 0."""
+        if not self.has_position:
+            return []
+        start = self._base + self.ofs_buffer
+        end = start + self.stride * self.count
+        if start < 0 or end > len(self._data):
+            raise NnError(f"vertex buffer {start:#x}..{end:#x} outside the file")
+        return [
+            struct.unpack_from("<3f", self._data, start + i * self.stride)
+            for i in range(self.count)
+        ]
+
+    def __repr__(self):
+        return f"<VertexList fmt={self.fmt:#x} stride={self.stride} count={self.count}>"
+
+
+class PrimitiveList:
+    """One `NZOB` index buffer.
+
+        +0x00  u32  mode (always 0x4810, triangle strip)
+        +0x04  u32  total index count
+        +0x08  u32  strip count
+        +0x0C  u32  offset of the per-strip index counts
+        +0x10  u32  offset of the u16 index data
+    """
+
+    SIZE = 0x14
+    __slots__ = ("mode", "total", "n_strips", "ofs_counts", "ofs_indices", "_data", "_base")
+
+    def __init__(self, data: bytes, base: int, offset: int):
+        (self.mode, self.total, self.n_strips, self.ofs_counts,
+         self.ofs_indices) = struct.unpack_from("<5I", data, offset)
+        self._data, self._base = data, base
+
+    def strips(self) -> list[list[int]]:
+        """Index data split into strips."""
+        counts_at = self._base + self.ofs_counts
+        if counts_at + self.n_strips * 4 > len(self._data):
+            raise NnError("strip count table outside the file")
+        counts = struct.unpack_from(f"<{self.n_strips}I", self._data, counts_at)
+
+        at = self._base + self.ofs_indices
+        out = []
+        for n in counts:
+            if at + n * 2 > len(self._data):
+                raise NnError("index data outside the file")
+            out.append(list(struct.unpack_from(f"<{n}H", self._data, at)))
+            at += n * 2
+        return out
+
+    def triangles(self) -> list[tuple[int, int, int]]:
+        """Expand every strip to triangles, flipping winding on odd steps."""
+        tris = []
+        for strip in self.strips():
+            for i in range(len(strip) - 2):
+                a, b, c = strip[i], strip[i + 1], strip[i + 2]
+                if a == b or b == c or a == c:
+                    continue  # degenerate, used to stitch strips together
+                tris.append((a, b, c) if i % 2 == 0 else (a, c, b))
+        return tris
+
+    def __repr__(self):
+        return f"<PrimitiveList mode={self.mode:#x} strips={self.n_strips} indices={self.total}>"
+
+
+class MeshSet:
+    """Binds a vertex list to a primitive list, a material and a node.
+
+        +0x00  float[3]  bounding sphere centre
+        +0x0C  float     bounding sphere radius
+        +0x10  s32       node index
+        +0x14  s32       matrix index
+        +0x18  s32       material index
+        +0x1C  s32       vertex list index
+        +0x20  s32       primitive list index
+        +0x24  u32       reserved
+
+    This is what pairs geometry up. Vertex and primitive lists are *not*
+    positionally matched — a model can have 27 of each and still pair them in a
+    different order, so anything that assumes `vtx[i]` goes with `prim[i]` will
+    produce out-of-range indices on roughly half the corpus.
+
+    **40 bytes, where Episode I's `NNS_MESHSET` is 48.** Episode I carries three
+    reserved words and the Direct3D build carries one. Measured, not assumed: in
+    every subobject the gap between the mesh set array and the texture index list
+    that follows it divides exactly by the mesh set count, giving 40 on models
+    with 1, 2 and 24 mesh sets alike.
+    """
+
+    SIZE = 0x28
+    __slots__ = ("center", "radius", "i_node", "i_matrix", "i_material",
+                 "i_vtxlist", "i_primlist")
+
+    def __init__(self, data: bytes, offset: int):
+        cx, cy, cz, self.radius = struct.unpack_from("<4f", data, offset)
+        self.center = (cx, cy, cz)
+        (self.i_node, self.i_matrix, self.i_material,
+         self.i_vtxlist, self.i_primlist) = struct.unpack_from("<5i", data, offset + 0x10)
+
+    def __repr__(self):
+        return (f"<MeshSet vtx={self.i_vtxlist} prim={self.i_primlist} "
+                f"mat={self.i_material} node={self.i_node}>")
+
+
+class SubObject:
+    """A drawable group of mesh sets.
+
+        +0x00  u32  type flags
+        +0x04  s32  mesh set count
+        +0x08  u32  mesh set list offset
+        +0x0C  s32  texture count
+        +0x10  u32  texture index list offset
+    """
+
+    SIZE = 0x14
+    __slots__ = ("ftype", "n_meshset", "ofs_meshset", "n_tex", "ofs_tex")
+
+    def __init__(self, data: bytes, offset: int):
+        (self.ftype, self.n_meshset, self.ofs_meshset,
+         self.n_tex, self.ofs_tex) = struct.unpack_from("<IiIiI", data, offset)
+
+
+def read_meshsets(data: bytes, obj: NnObject, base: int = 0x20) -> list[MeshSet]:
+    """Every mesh set across every subobject, in draw order."""
+    out: list[MeshSet] = []
+    for i in range(obj.n_subobj):
+        at = base + obj.ofs_subobj + i * SubObject.SIZE
+        if at + SubObject.SIZE > len(data):
+            raise NnError(f"subobject {i} outside the file")
+        sub = SubObject(data, at)
+        if not sub.ofs_meshset:
+            continue
+        for j in range(sub.n_meshset):
+            m = base + sub.ofs_meshset + j * MeshSet.SIZE
+            if m + MeshSet.SIZE > len(data):
+                raise NnError(f"mesh set {j} of subobject {i} outside the file")
+            out.append(MeshSet(data, m))
+    return out
+
+
+def _pointer_array(data: bytes, base: int, ofs_list: int, count: int) -> list[int]:
+    """Read `count` {u32 fType, u32 offset} pairs, returning the offsets."""
+    out = []
+    for i in range(count):
+        at = base + ofs_list + i * 8
+        if at + 8 > len(data):
+            raise NnError(f"pointer array entry {i} outside the file")
+        _ftype, offset = struct.unpack_from("<2I", data, at)
+        out.append(offset)
+    return out
+
+
+def read_vertex_lists(data: bytes, obj: NnObject, base: int = 0x20) -> list[VertexList]:
+    lists = []
+    for offset in _pointer_array(data, base, obj.ofs_vtxlist, obj.n_vtxlist):
+        at = base + offset
+        if at + VertexList.SIZE > len(data):
+            raise NnError(f"vertex descriptor at {at:#x} outside the file")
+        lists.append(VertexList(data, base, at))
+    return lists
+
+
+def read_primitive_lists(data: bytes, obj: NnObject, base: int = 0x20) -> list[PrimitiveList]:
+    lists = []
+    for offset in _pointer_array(data, base, obj.ofs_primlist, obj.n_primlist):
+        at = base + offset
+        if at + PrimitiveList.SIZE > len(data):
+            raise NnError(f"primitive descriptor at {at:#x} outside the file")
+        lists.append(PrimitiveList(data, base, at))
+    return lists
+
+
 def read_object(data: bytes, f: NnFile) -> NnObject | None:
     """Locate and parse the NZOB object header of a parsed NN file."""
     chunk = None
@@ -277,6 +484,106 @@ def cmd_show(args) -> int:
                   f"{obj.n_mtxpal} matrix palettes, {obj.n_subobj} subobjects"
                   f"{'  [skinned]' if obj.is_skinned else ''}")
     return 0
+
+
+def cmd_export(args) -> int:
+    """Write a model's geometry to Wavefront OBJ."""
+    archive = amb.load(args.archive)
+    matches = [e for e in archive if args.name.upper() in e.name.upper()
+               and e.name.upper().endswith(".ZNO")]
+    if not matches:
+        print(f"no .ZNO matching {args.name!r}", file=sys.stderr)
+        return 1
+
+    os.makedirs(args.dest, exist_ok=True)
+    for entry in matches[: args.limit]:
+        data = archive.read(entry)
+        f = parse(data)
+        obj = read_object(data, f)
+        if obj is None or obj.is_locator:
+            print(f"  skipping {entry.name} (no geometry)")
+            continue
+        vlists = read_vertex_lists(data, obj)
+        plists = read_primitive_lists(data, obj)
+        meshsets = read_meshsets(data, obj)
+
+        label = entry.name.replace(chr(92), "/").rsplit("/", 1)[-1]
+        out = os.path.join(args.dest, os.path.splitext(label)[0] + ".obj")
+        verts = tris = 0
+        with open(out, "w", encoding="ascii") as fp:
+            fp.write(f"# {label} - extracted from Sonic 4 Episode II\n")
+            fp.write(f"# {len(meshsets)} mesh sets, {obj.n_vtxlist} vertex lists, "
+                     f"{obj.n_primlist} primitive lists\n")
+            for i, mesh in enumerate(meshsets):
+                if not (0 <= mesh.i_vtxlist < len(vlists)):
+                    continue
+                if not (0 <= mesh.i_primlist < len(plists)):
+                    continue
+                positions = vlists[mesh.i_vtxlist].positions()
+                origin = verts
+                for x, y, z in positions:
+                    fp.write(f"v {x:.6f} {y:.6f} {z:.6f}\n")
+                    verts += 1
+                fp.write(f"g mesh{i}_mat{mesh.i_material}\n")
+                for a, b, c in plists[mesh.i_primlist].triangles():
+                    fp.write(f"f {origin+a+1} {origin+b+1} {origin+c+1}\n")
+                    tris += 1
+        print(f"  {out}  {verts} vertices, {tris} triangles, {len(meshsets)} mesh sets")
+    return 0
+
+
+def cmd_geometry(args) -> int:
+    """Extract geometry from every model under a tree and check it holds up."""
+    ok = bad = skipped = 0
+    verts = tris = 0
+    failures: list[str] = []
+    for path in amb._iter_amb_files(args.root):
+        try:
+            archive = amb.load(path)
+        except Exception:
+            continue
+        for entry in archive:
+            if not entry.name.upper().endswith(".ZNO"):
+                continue
+            data = archive.read(entry)
+            try:
+                obj = read_object(data, parse(data))
+                if obj is None or obj.is_locator:
+                    skipped += 1
+                    continue
+                vlists = read_vertex_lists(data, obj)
+                plists = read_primitive_lists(data, obj)
+                meshsets = read_meshsets(data, obj)
+                if not meshsets:
+                    raise NnError("no mesh sets")
+                for mesh in meshsets:
+                    if not (0 <= mesh.i_vtxlist < len(vlists)):
+                        raise NnError(f"vertex list index {mesh.i_vtxlist} out of range")
+                    if not (0 <= mesh.i_primlist < len(plists)):
+                        raise NnError(f"primitive list index {mesh.i_primlist} out of range")
+                    pl = plists[mesh.i_primlist]
+                    if pl.mode != PRIM_TRIANGLE_STRIP:
+                        raise NnError(f"unexpected primitive mode {pl.mode:#x}")
+                    limit = vlists[mesh.i_vtxlist].count
+                    for tri in pl.triangles():
+                        # An index past its own vertex list means the mesh set
+                        # binding is being read wrongly.
+                        if max(tri) >= limit:
+                            raise NnError(f"index {max(tri)} >= {limit} vertices")
+                        tris += 1
+                for vl in vlists:
+                    verts += len(vl.positions())
+                ok += 1
+            except (NnError, struct.error) as exc:
+                bad += 1
+                if len(failures) < 10:
+                    failures.append(f"{os.path.basename(path)}::{entry.name}: {exc}")
+
+    print(f"{ok} models yielded geometry, {bad} failed, {skipped} locators skipped")
+    print(f"{verts:,} vertices and {tris:,} triangles extracted")
+    for failure in failures:
+        print(f"  ! {failure}", file=sys.stderr)
+    return 1 if bad else 0
 
 
 def cmd_objects(args) -> int:
@@ -387,6 +694,17 @@ def main(argv=None) -> int:
     p.add_argument("name", help="substring of the entry name")
     p.add_argument("--limit", type=int, default=3)
     p.set_defaults(func=cmd_show)
+
+    p = sub.add_parser("export", help="write a model's geometry to Wavefront OBJ")
+    p.add_argument("archive")
+    p.add_argument("name", help="substring of the entry name")
+    p.add_argument("dest")
+    p.add_argument("--limit", type=int, default=5)
+    p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("geometry", help="extract geometry from every model under a tree")
+    p.add_argument("root")
+    p.set_defaults(func=cmd_geometry)
 
     p = sub.add_parser("objects", help="parse and sanity-check every model's object header")
     p.add_argument("root")

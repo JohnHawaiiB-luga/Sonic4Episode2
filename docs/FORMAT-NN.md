@@ -138,24 +138,142 @@ They are Direct3D motions that kept an Xbox filename through the asset pipeline,
 not console leftovers that need a separate decoder. All 50 live in the Special
 Stage motion archives (`SS_SON_MTN`, `SS_TLS_MTN`).
 
+## Geometry
+
+Status: **VERIFIED**. All **3,546 models with geometry extract with zero
+failures** (the other 31 are locators), yielding **2,820,398 vertices and
+2,513,705 triangles**.
+
+### Pointer arrays
+
+The material, vertex list and primitive list offsets in the object header each
+point at an array of `{u32 fType; u32 offset}` pairs — one per item. The second
+word is the offset of the actual descriptor.
+
+### Vertex list descriptor
+
+| Offset | Type | Field |
+|--------|------|-------|
+| `0x00` | `u32` | format flags |
+| `0x04` | `u32` | unknown — resolves near the descriptor itself, **OPEN** |
+| `0x08` | `u32` | stride in bytes |
+| `0x0C` | `u32` | vertex count |
+| `0x10` | `u32` | vertex buffer offset |
+
+Format flags are a bitfield. Each combination accounts for its stride exactly,
+which is how the bits were identified across 2,700 vertex lists:
+
+| Bit | Attribute | Size |
+|-----|-----------|------|
+| `0x00001` | position | 12 |
+| `0x00002` | normal | 12 |
+| `0x00008` | diffuse colour | 4 |
+| `0x00010` | specular colour | 4 |
+| `0x10000` | texture coordinate | 8 |
+
+`0x10003` → 32 bytes, `0x1001b` → 40, `0x10019` → 28, `0x10001` → 20. Bits
+`0x40`/`0x100` appear on wider strides (56, 64) and are presumably blend weights
+and indices for skinning; not yet confirmed.
+
+Position, when present, is always at offset 0 within the vertex.
+
+### Primitive list descriptor
+
+| Offset | Type | Field |
+|--------|------|-------|
+| `0x00` | `u32` | mode |
+| `0x04` | `u32` | total index count |
+| `0x08` | `u32` | strip count |
+| `0x0C` | `u32` | offset of per-strip index counts (`u32` each) |
+| `0x10` | `u32` | offset of `u16` index data |
+
+**Mode is `0x4810` on all 4,085 primitive lists in the build** — everything is a
+triangle strip. Strips are concatenated in the index data, split by the per-strip
+counts, and stitched with degenerate triangles that a reader should drop.
+
+### Mesh sets — how it all binds together
+
+Vertex and primitive lists are **not** positionally paired. The binding lives in
+`NNS_MESHSET`, reached through the subobject list:
+
+```
+object -> subobject[n_subobj]  (20 bytes each)
+            -> mesh set[n_meshset]  (40 bytes each)
+                 -> iVtxList, iPrimList, iMaterial, iNode
+```
+
+Subobject:
+
+| Offset | Type | Field |
+|--------|------|-------|
+| `0x00` | `u32` | type flags |
+| `0x04` | `s32` | mesh set count |
+| `0x08` | `u32` | mesh set array offset |
+| `0x0C` | `s32` | texture count |
+| `0x10` | `u32` | texture index list offset |
+
+Mesh set:
+
+| Offset | Type | Field |
+|--------|------|-------|
+| `0x00` | `float[3]` | bounding sphere centre |
+| `0x0C` | `float` | bounding sphere radius |
+| `0x10` | `s32` | node index |
+| `0x14` | `s32` | matrix index |
+| `0x18` | `s32` | material index |
+| `0x1C` | `s32` | vertex list index |
+| `0x20` | `s32` | primitive list index |
+| `0x24` | `u32` | reserved |
+
+**The mesh set is 40 bytes here where Episode I's is 48** — Episode I carries
+three reserved words, the Direct3D build carries one. This was measured rather
+than assumed: within every subobject, the gap between the mesh set array and the
+texture index list immediately after it divides exactly by the mesh set count,
+giving 40 on models with 1, 2 and 24 mesh sets alike.
+
+Assuming positional pairing instead of reading mesh sets fails on roughly half
+the corpus, and using Episode I's 48-byte stride fails on rather more — both with
+plausible-looking indices rather than obvious errors. This is the sharpest
+example so far of the oracle telling you the right *shape* and the wrong *size*.
+
+### Cross-check
+
+The extraction agrees with the header independently. `ENE_HOPPER.ZNO` declares a
+bounding box centred on `(0.00, 4.36, 2.84)` with half-extents
+`(3.88, 9.04, 9.48)`. Its 3,211 extracted vertices span x `[-3.88, 3.88]`,
+y `[-4.68, 13.39]`, z `[-6.64, 12.31]` — centre `(0.00, 4.36, 2.84)`,
+half-extents `(3.88, 9.04, 9.48)`. Those two figures come from different regions
+of the file and match to two decimal places.
+
 ## Still open
 
-The lists the object header points at — materials, vertex lists, primitive lists,
-nodes and subobjects. The header tells us how many there are and where they
-start; their element layouts are not yet decoded, and that is what a stage viewer
-actually needs.
-
-Expect Episode II to diverge here. Episode I's material struct is
-`NNS_MATERIAL_GLES11_DESC`, an OpenGL ES 1.1 fixed-function descriptor, whereas
-Episode II is shader-driven Direct3D 9. The object header above is
-platform-neutral and carried over unchanged; the material and vertex descriptors
-almost certainly do not.
-
-`NOF0` also has to be understood before trusting any pointer chain — it is the
-relocation table listing which offsets the engine fixes up at load time.
+- **Materials.** Counted and located, contents undecoded. Episode I's is
+  `NNS_MATERIAL_GLES11_DESC`, an OpenGL ES 1.1 fixed-function descriptor; the
+  Direct3D build will differ, and given the mesh set precedent, expect a
+  different size as well as different fields.
+- **Node tree.** 10,138 nodes across the corpus, with 846 models skinned. Needed
+  for animation and for placing subobjects correctly; not needed to get static
+  geometry on screen.
+- **Vertex attributes beyond position.** Normals, colours and texture coordinates
+  are present at known strides but are not yet extracted — the exporter writes
+  positions only. Bits `0x40` and `0x100` on the wider strides are unidentified.
+- **Unknown word at `+0x04`** of the vertex list descriptor.
+- **`NOF0`.** The relocation table. Not needed so far, because every offset
+  reached in practice is already correct relative to `OfsData`, but it should be
+  understood before trusting a pointer chain in general.
 
 Episode I's `NNS_OBJECT.Read`, reached from `amObjectSetup`
-(`AppMain/Am/AmObject.cs:5`), remains the oracle for the traversal order.
+(`AppMain/Am/AmObject.cs:5`), remains the oracle for traversal order — with the
+caveat that its struct *sizes* cannot be trusted.
+
+## Usage
+
+```sh
+python tools/nn.py export   G_ZONE1/MAP/ZONE1_M.AMB Z1_G_FL_A out/
+python tools/nn.py geometry .
+```
+
+`export` writes Wavefront OBJ, which any 3D viewer opens.
 
 ## Usage
 
