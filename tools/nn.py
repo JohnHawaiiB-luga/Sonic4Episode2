@@ -309,6 +309,40 @@ class PrimitiveList:
         return f"<PrimitiveList mode={self.mode:#x} strips={self.n_strips} indices={self.total}>"
 
 
+def read_relocations(data: bytes, f: NnFile, base: int = 0x20) -> list[int]:
+    """Offsets the engine patches at load time, from the `NOF0` chunk.
+
+    Layout: `u32 count`, `u32 reserved`, then `count` byte offsets relative to
+    the data base.
+
+    Recovered from the loader itself in `Sonic.exe` at `0x006c6c33`:
+
+        mov ecx, dword [edi]            ; offset from the table
+        shr ecx, 2                      ; /4, so it indexes u32s
+        add dword [eax + ecx*4], eax    ; *(base + offset) += base
+
+    So each listed word holds a base-relative offset that gets turned into an
+    absolute pointer in place. **The file layout is the in-memory struct
+    layout** — Episode II relocates rather than re-parsing, which is why every
+    internal offset is relative to `OfsData`.
+
+    Usefully, this doubles as a map of which words in the file are pointers.
+    """
+    chunk = f.find("NOF0")
+    if chunk is None or chunk.size < 8:
+        return []
+    count, _reserved = struct.unpack_from("<II", chunk.payload, 0)
+    if 8 + count * 4 > chunk.size:
+        raise NnError(f"NOF0 declares {count} entries but the chunk is {chunk.size} bytes")
+    offsets = struct.unpack_from(f"<{count}I", chunk.payload, 8)
+    for off in offsets:
+        if off % 4:
+            raise NnError(f"relocation offset {off:#x} is not word aligned")
+        if base + off + 4 > len(data):
+            raise NnError(f"relocation offset {off:#x} outside the file")
+    return list(offsets)
+
+
 class TextureRef:
     """One entry of the `NZTL` texture list.
 

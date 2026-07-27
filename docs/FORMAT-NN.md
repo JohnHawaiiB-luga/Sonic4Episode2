@@ -327,28 +327,89 @@ of the file and match to two decimal places.
 ## Still open
 
 - **Materials**, and with them the exact mesh-to-texture binding. See the
-  post-mortem below — three data-driven approaches have failed and the next
-  attempt should go at the binary. Located but **variable in size**, unlike
-  everything else here.
-  The material pointer's `fType` differs per material (`0x10000000`,
-  `0x30000000`) and the gaps between consecutive descriptors vary — 196 and 200
-  bytes within a single model — so the layout is flag-driven, with optional
-  blocks present or absent. One block is clearly an RGBA colour: a material in
-  `Z1_G_HASIRA_B.ZNO` reads `(0.255, 0.494, 0.541, 1.000)`. The field needed most
-  is whichever selects the texture bank slot.
+  sections below. The leading fields are now known; what remains is the field
+  that **selects the texture**, which cannot be settled from data alone and needs
+  the draw-path code.
 - **Vertex colours** are not extracted, and bits `0x40`/`0x100` on the wider
   strides (56, 64) are unidentified — presumably blend weights and indices.
 - **Unknown word at `+0x04`** of the vertex list descriptor, and the 32 unknown
   bytes at `+0x70` of a node.
-- **`NOF0`.** The relocation table. Not needed so far, because every offset
-  reached in practice is already correct relative to `OfsData`, but it should be
-  understood before trusting a pointer chain in general.
+- **`NZMO` motions and `NZMA` morph animation.** Untouched. 846 models are
+  skinned, so animation is a whole phase of its own.
 
 Episode I's `NNS_OBJECT.Read`, reached from `amObjectSetup`
 (`AppMain/Am/AmObject.cs:5`), remains the oracle for traversal order — with the
 caveat that its struct *sizes* cannot be trusted.
 
-## Materials — post-mortem on three failed approaches
+## `NOF0` - the relocation table
+
+Status: **VERIFIED**. All **3,577 models parse, 0 failures, 134,372 relocation
+entries**, every one word-aligned and inside the file.
+
+| Offset | Field |
+|--------|-------|
+| `0x00` | entry count |
+| `0x04` | reserved |
+| `0x08` | `count` byte offsets, relative to the data base |
+
+Recovered from the loader in `Sonic.exe` at `0x006c6c33`:
+
+```asm
+mov ecx, dword [edi]            ; offset from the table
+shr ecx, 2                      ; /4, so it indexes u32s
+add dword [eax + ecx*4], eax    ; *(base + offset) += base
+```
+
+Each listed word holds a base-relative offset that the engine turns into an
+absolute pointer **in place**.
+
+Two consequences worth internalising:
+
+- **The file layout is the in-memory struct layout.** Episode II relocates rather
+  than re-parsing, which is exactly why every internal offset is relative to
+  `OfsData` and why the structs can be read straight out of the file.
+- **`NOF0` is a map of which words are pointers.** That is a general-purpose tool
+  for attacking any struct in this format - including materials, where measuring
+  sizes had failed three times.
+
+The same function confirms two earlier findings from code rather than data: the
+chunk dispatch compares against `NZOB` (`0x424F5A4E`), `NEND` and `NZTL` exactly
+as walked here, and the texture-list loop at `0x006c6cce` steps by `0x14`,
+**independently confirming the 20-byte texture entry**. It also uppercases texture
+names in place, which is why Episode I's decompilation calls `.ToUpper()`.
+
+## Materials - structure partially recovered
+
+Using the relocation map instead of size measurement finally made progress.
+
+Every material descriptor carries **pointers at `+0x08` and `+0x0C`**, consistently
+across models:
+
+| Offset | Type | Field |
+|--------|------|-------|
+| `0x00` | `u32` | flags - e.g. `0x1102`, `0x0000` |
+| `0x04` | `u32` | reserved, zero in observed materials |
+| `0x08` | `u32` | pointer to a **colour block** |
+| `0x0C` | `u32` | pointer to a **render-state block** |
+
+The colour block opens with a count (`2`) then RGBA floats - `Z1_G_HASIRA_B.ZNO`'s
+second material reads `(0.255, 0.494, 0.541, 1.000)` then `(1, 1, 1, 1)`.
+
+The render-state block opens with a small integer (16, 17, 24 observed) followed
+by packed `u16` pairs such as `(5, 6, 5, 6)` and `(9, 1, 5, 6)`, which read like
+sampler or blend state.
+
+**Where the texture selector probably lives**: `Z1_G_HASIRA_B` has two textures,
+and its materials 1 and 2 have *identical* colour blocks and render-state blocks
+differing only in that leading integer - 16 versus 24 - while their meshes use
+different textures. **Unproven**; it needs the draw-path code, not more staring at
+data.
+
+Also confirmed: the material pointer's own `fType` (`0x10000000` vs `0x30000000`)
+adds exactly 4 bytes to the descriptor, consistent across every size class
+(120/124, 196/200, 260/264, 184/188).
+
+## Materials - post-mortem on three failed approaches
 
 Recorded so nobody repeats them. Every other structure in this format yielded to
 measurement; materials have not.
@@ -373,10 +434,11 @@ material's size, and it is not. Materials are individually referenced blobs and
 other structures interleave between them, so the gap is an upper bound at best.
 Every size-based inference built on it is unsound.
 
-**What to do instead.** Go at the binary with rizin. Find the routine that reads a
-material — reachable from the object-loading path — and read the field layout out
-of the code. The data cannot settle this on its own, which is a different
-situation from every other struct here.
+**What worked instead.** Going at the binary with rizin, which produced `NOF0`,
+then using the relocation table as a pointer map rather than guessing at sizes.
+See the section above - the descriptor's leading fields are now known. Finishing
+the job still needs the draw-path code, since the texture selector cannot be
+confirmed from data alone.
 
 ## Usage
 
