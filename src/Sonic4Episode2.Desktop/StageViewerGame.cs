@@ -38,6 +38,10 @@ public sealed class StageViewerGame : Game
     private Texture2D _white = null!;
     private Texture2D _marker = null!;
     private Texture2D _ring = null!;
+    private TileMesh? _ringMesh;
+    private VertexPositionNormalTexture[] _ringVertices = [];
+    private readonly Dictionary<string, int[]> _ringBatches = [];
+    private int _ringsBuiltFor = -1;
     private GameEngine _engine = null!;
 
     private Vector2 _camera;
@@ -195,6 +199,7 @@ public sealed class StageViewerGame : Game
         _ring.SetData(new[] { new Color(255, 200, 40) });
 
         LoadTextures(_actArchive);
+        LoadRingModel();
         if (_pending is not null)
         {
             BuildBuffers(_pending);
@@ -239,6 +244,94 @@ public sealed class StageViewerGame : Game
     }
 
     /// <summary>
+    /// Loads the game's own ring model, so rings are rings rather than squares.
+    /// </summary>
+    /// <remarks>
+    /// <c>RING.ZNO</c> is a single-node model with one vertex list, which is why
+    /// it can go through the same <see cref="TileMesh"/> path the stage tiles use
+    /// with no skinning involved. Sonic's own model has 109 nodes and needs the
+    /// skeleton evaluated first, which is a separate job.
+    /// </remarks>
+    private void LoadRingModel()
+    {
+        try
+        {
+            var models = AmbArchive.Parse(_content.Read("G_COM/RING/RING_MDL.AMB"));
+            int at = -1;
+            for (int i = 0; i < models.Entries.Count; i++)
+            {
+                if (models.Entries[i].Name.EndsWith(".ZNO", StringComparison.OrdinalIgnoreCase))
+                {
+                    at = i;
+                    break;
+                }
+            }
+            if (at < 0) return;
+
+            var model = NnModel.Load(models.Read(models.Entries[at]));
+            if (model is null) return;
+            _ringMesh = TileMesh.From(model);
+
+            var textures = AmbArchive.Parse(_content.Read("G_COM/RING/RING_TEX.AMB"));
+            foreach (var tex in textures.Entries)
+            {
+                if (!tex.Name.EndsWith(".DDS", StringComparison.OrdinalIgnoreCase)) continue;
+                string label = tex.Name.Replace((char)92, '/');
+                label = label[(label.LastIndexOf('/') + 1)..].ToUpperInvariant();
+                if (_textures.ContainsKey(label)) continue;
+                var decoded = DdsTexture.Parse(textures.Read(tex).Span);
+                var texture = new Texture2D(GraphicsDevice, decoded.Width, decoded.Height);
+                texture.SetData(decoded.Pixels);
+                _textures[label] = texture;
+            }
+        }
+        catch (Exception ex) when (ex is AmbException or NnException or DdsException)
+        {
+            // Without the model the flat markers still draw, so this is a
+            // downgrade rather than a failure.
+            _ringMesh = null;
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds the ring geometry, one instance of the model per ring still on
+    /// the field.
+    /// </summary>
+    /// <remarks>
+    /// Only when the count changes, which is a handful of times a second at most.
+    /// Rebuilding beats tracking per-ring index ranges for something this cheap.
+    /// </remarks>
+    private void BuildRingBuffers()
+    {
+        var field = _engine.RingField;
+        if (_ringMesh is null || field is null) return;
+
+        _ringsBuiltFor = field.Collected;
+        _ringBatches.Clear();
+
+        var batch = new StageBatch();
+        for (int i = 0; i < field.Count; i++)
+        {
+            if (field.IsTaken(i)) continue;
+            var at = field.WorldPosition(i);
+            batch.Add(_ringMesh, at.X, at.Y, 390f);
+        }
+
+        _ringVertices = new VertexPositionNormalTexture[batch.VertexCount];
+        for (int i = 0; i < _ringVertices.Length; i++)
+        {
+            _ringVertices[i] = new VertexPositionNormalTexture(
+                new Vector3(batch.Positions[i * 3],
+                            batch.Positions[i * 3 + 1],
+                            batch.Positions[i * 3 + 2]),
+                Vector3.Backward,
+                new Vector2(batch.TexCoords[i * 2], batch.TexCoords[i * 2 + 1]));
+        }
+        foreach (var pair in batch.IndicesByTexture)
+            _ringBatches[pair.Key] = [.. pair.Value];
+    }
+
+    /// <summary>
     /// A quad per uncollected ring.
     /// </summary>
     /// <remarks>
@@ -250,6 +343,29 @@ public sealed class StageViewerGame : Game
     {
         var field = _engine.RingField;
         if (field is null || field.Remaining == 0) return;
+
+        if (_ringMesh is not null)
+        {
+            if (_ringsBuiltFor != field.Collected) BuildRingBuffers();
+            if (_ringVertices.Length == 0) return;
+
+            foreach (var pair in _ringBatches)
+            {
+                _effect.Texture = _textures.TryGetValue(pair.Key.ToUpperInvariant(),
+                                                        out var texture)
+                    ? texture
+                    : _ring;
+                foreach (var pass in _effect.CurrentTechnique.Passes)
+                {
+                    pass.Apply();
+                    GraphicsDevice.DrawUserIndexedPrimitives(
+                        PrimitiveType.TriangleList,
+                        _ringVertices, 0, _ringVertices.Length,
+                        pair.Value, 0, pair.Value.Length / 3);
+                }
+            }
+            return;
+        }
 
         float half = RingField.RingPixels / 2f * PlayerPhysics.WorldPerPixel;
         const float z = 390f;   // just behind the player marker
