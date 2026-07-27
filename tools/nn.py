@@ -216,18 +216,45 @@ class VertexList:
     def has_position(self) -> bool:
         return bool(self.fmt & VTX_POSITION)
 
-    def positions(self) -> list[tuple[float, float, float]]:
-        """Vertex positions. Position, when present, always sits at offset 0."""
-        if not self.has_position:
+    def attribute_offset(self, attribute: int) -> int | None:
+        """Byte offset of an attribute within a vertex, or None if absent.
+
+        Attributes are laid out in a fixed order and packed with no padding,
+        which is why every observed flag combination accounts for its stride
+        exactly.
+        """
+        if not self.fmt & attribute:
+            return None
+        offset = 0
+        for bit, size in ((VTX_POSITION, 12), (VTX_NORMAL, 12),
+                          (VTX_DIFFUSE, 4), (VTX_SPECULAR, 4), (VTX_TEXCOORD, 8)):
+            if bit == attribute:
+                return offset
+            if self.fmt & bit:
+                offset += size
+        return None
+
+    def _read(self, attribute: int, fmt: str, n: int) -> list[tuple]:
+        at = self.attribute_offset(attribute)
+        if at is None:
             return []
         start = self._base + self.ofs_buffer
         end = start + self.stride * self.count
         if start < 0 or end > len(self._data):
             raise NnError(f"vertex buffer {start:#x}..{end:#x} outside the file")
         return [
-            struct.unpack_from("<3f", self._data, start + i * self.stride)
+            struct.unpack_from(fmt, self._data, start + i * self.stride + at)
             for i in range(self.count)
         ]
+
+    def positions(self) -> list[tuple[float, float, float]]:
+        return self._read(VTX_POSITION, "<3f", 3)
+
+    def normals(self) -> list[tuple[float, float, float]]:
+        return self._read(VTX_NORMAL, "<3f", 3)
+
+    def texcoords(self) -> list[tuple[float, float]]:
+        return self._read(VTX_TEXCOORD, "<2f", 2)
 
     def __repr__(self):
         return f"<VertexList fmt={self.fmt:#x} stride={self.stride} count={self.count}>"
@@ -280,6 +307,57 @@ class PrimitiveList:
 
     def __repr__(self):
         return f"<PrimitiveList mode={self.mode:#x} strips={self.n_strips} indices={self.total}>"
+
+
+class Node:
+    """One entry of the node tree — a transform and its links.
+
+        +0x00  u32       type flags
+        +0x04  s16       matrix palette index
+        +0x06  s16       parent index (-1 on the root)
+        +0x08  s16       first child index (-1 for a leaf)
+        +0x0A  s16       next sibling index (-1 if last)
+        +0x0C  float[3]  translation
+        +0x18  s32[3]    rotation, as fixed-point angles
+        +0x24  float[3]  scaling
+        +0x30  float[16] inverse bind matrix
+        +0x70  32 bytes  unknown, zero in every observed model
+
+    **144 bytes, where Episode I's `NNS_NODE` is 112.** Verified by walking the
+    tree on all 846 multi-node models: every parent, child and sibling index
+    lands in range, each model has exactly one root, and every scale is finite
+    and non-zero. Strides of 136 and 152 fail on 846 and 845 models respectively,
+    so the value is not merely permissive.
+    """
+
+    SIZE = 0x90
+    __slots__ = ("ftype", "i_matrix", "i_parent", "i_child", "i_sibling",
+                 "translation", "rotation", "scaling")
+
+    def __init__(self, data: bytes, offset: int):
+        (self.ftype, self.i_matrix, self.i_parent,
+         self.i_child, self.i_sibling) = struct.unpack_from("<Ihhhh", data, offset)
+        self.translation = struct.unpack_from("<3f", data, offset + 0x0C)
+        self.rotation = struct.unpack_from("<3i", data, offset + 0x18)
+        self.scaling = struct.unpack_from("<3f", data, offset + 0x24)
+
+    @property
+    def is_root(self) -> bool:
+        return self.i_parent == -1
+
+    def __repr__(self):
+        return (f"<Node parent={self.i_parent} child={self.i_child} "
+                f"sibling={self.i_sibling} t={self.translation}>")
+
+
+def read_nodes(data: bytes, obj: NnObject, base: int = 0x20) -> list[Node]:
+    nodes = []
+    for i in range(obj.n_node):
+        at = base + obj.ofs_node + i * Node.SIZE
+        if at + Node.SIZE > len(data):
+            raise NnError(f"node {i} outside the file")
+        nodes.append(Node(data, at))
+    return nodes
 
 
 class MeshSet:
@@ -519,14 +597,32 @@ def cmd_export(args) -> int:
                     continue
                 if not (0 <= mesh.i_primlist < len(plists)):
                     continue
-                positions = vlists[mesh.i_vtxlist].positions()
+                vl = vlists[mesh.i_vtxlist]
                 origin = verts
-                for x, y, z in positions:
+                for x, y, z in vl.positions():
                     fp.write(f"v {x:.6f} {y:.6f} {z:.6f}\n")
                     verts += 1
+                uvs = vl.texcoords()
+                for u, v in uvs:
+                    fp.write(f"vt {u:.6f} {1.0 - v:.6f}\n")  # OBJ's V axis points up
+                normals = vl.normals()
+                for nx, ny, nz in normals:
+                    fp.write(f"vn {nx:.6f} {ny:.6f} {nz:.6f}\n")
+
                 fp.write(f"g mesh{i}_mat{mesh.i_material}\n")
-                for a, b, c in plists[mesh.i_primlist].triangles():
-                    fp.write(f"f {origin+a+1} {origin+b+1} {origin+c+1}\n")
+                for tri in plists[mesh.i_primlist].triangles():
+                    parts = []
+                    for idx in tri:
+                        n = origin + idx + 1
+                        if uvs and normals:
+                            parts.append(f"{n}/{n}/{n}")
+                        elif uvs:
+                            parts.append(f"{n}/{n}")
+                        elif normals:
+                            parts.append(f"{n}//{n}")
+                        else:
+                            parts.append(str(n))
+                    fp.write("f " + " ".join(parts) + "\n")
                     tris += 1
         print(f"  {out}  {verts} vertices, {tris} triangles, {len(meshsets)} mesh sets")
     return 0
@@ -554,8 +650,16 @@ def cmd_geometry(args) -> int:
                 vlists = read_vertex_lists(data, obj)
                 plists = read_primitive_lists(data, obj)
                 meshsets = read_meshsets(data, obj)
+                nodes = read_nodes(data, obj)
                 if not meshsets:
                     raise NnError("no mesh sets")
+                roots = sum(1 for n in nodes if n.is_root)
+                if roots != 1:
+                    raise NnError(f"{roots} root nodes, expected exactly one")
+                for j, node in enumerate(nodes):
+                    for link in (node.i_parent, node.i_child, node.i_sibling):
+                        if link < -1 or link >= len(nodes):
+                            raise NnError(f"node {j} link {link} out of range")
                 for mesh in meshsets:
                     if not (0 <= mesh.i_vtxlist < len(vlists)):
                         raise NnError(f"vertex list index {mesh.i_vtxlist} out of range")

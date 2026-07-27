@@ -236,6 +236,45 @@ the corpus, and using Episode I's 48-byte stride fails on rather more — both w
 plausible-looking indices rather than obvious errors. This is the sharpest
 example so far of the oracle telling you the right *shape* and the wrong *size*.
 
+### Node tree
+
+144 bytes per node, and the tree is what places geometry: a mesh set names a node
+index, and models carry authored world positions rather than being centred on the
+origin.
+
+| Offset | Type | Field |
+|--------|------|-------|
+| `0x00` | `u32` | type flags |
+| `0x04` | `s16` | matrix palette index |
+| `0x06` | `s16` | parent index, `-1` on the root |
+| `0x08` | `s16` | first child, `-1` for a leaf |
+| `0x0A` | `s16` | next sibling, `-1` if last |
+| `0x0C` | `float[3]` | translation |
+| `0x18` | `s32[3]` | rotation, fixed-point angles |
+| `0x24` | `float[3]` | scaling |
+| `0x30` | `float[16]` | inverse bind matrix |
+| `0x70` | 32 bytes | unknown, zero in every observed model |
+
+**144 bytes, where Episode I's `NNS_NODE` is 112** — the second size divergence,
+after the mesh set. Verified by walking the tree on all **846 multi-node models**:
+every parent, child and sibling index lands in range, each model has exactly one
+root, and every scale is finite and non-zero. Strides of 136 and 152 fail on 846
+and 845 models respectively, so 144 is not merely a permissive fit.
+
+The stride was found by dumping the raw array and looking for the repeat, after a
+brute-force sweep over plausible sizes found nothing that worked everywhere. Worth
+remembering: eyeballing the bytes beat generate-and-test here.
+
+### Vertex attributes
+
+Attributes are packed in a fixed order with no padding — position, normal,
+diffuse, specular, texture coordinate — which is why each flag combination
+accounts for its stride exactly. An attribute's offset is the sum of the sizes of
+the present attributes before it.
+
+`tools/nn.py` extracts positions, normals and texture coordinates, and the OBJ
+exporter writes all three. Texture coordinates need their V axis flipped for OBJ.
+
 ### Cross-check
 
 The extraction agrees with the header independently. `ENE_HOPPER.ZNO` declares a
@@ -247,17 +286,17 @@ of the file and match to two decimal places.
 
 ## Still open
 
-- **Materials.** Counted and located, contents undecoded. Episode I's is
-  `NNS_MATERIAL_GLES11_DESC`, an OpenGL ES 1.1 fixed-function descriptor; the
-  Direct3D build will differ, and given the mesh set precedent, expect a
-  different size as well as different fields.
-- **Node tree.** 10,138 nodes across the corpus, with 846 models skinned. Needed
-  for animation and for placing subobjects correctly; not needed to get static
-  geometry on screen.
-- **Vertex attributes beyond position.** Normals, colours and texture coordinates
-  are present at known strides but are not yet extracted — the exporter writes
-  positions only. Bits `0x40` and `0x100` on the wider strides are unidentified.
-- **Unknown word at `+0x04`** of the vertex list descriptor.
+- **Materials.** Located but **variable in size**, unlike everything else here.
+  The material pointer's `fType` differs per material (`0x10000000`,
+  `0x30000000`) and the gaps between consecutive descriptors vary — 196 and 200
+  bytes within a single model — so the layout is flag-driven, with optional
+  blocks present or absent. One block is clearly an RGBA colour: a material in
+  `Z1_G_HASIRA_B.ZNO` reads `(0.255, 0.494, 0.541, 1.000)`. The field needed most
+  is whichever selects the texture bank slot.
+- **Vertex colours** are not extracted, and bits `0x40`/`0x100` on the wider
+  strides (56, 64) are unidentified — presumably blend weights and indices.
+- **Unknown word at `+0x04`** of the vertex list descriptor, and the 32 unknown
+  bytes at `+0x70` of a node.
 - **`NOF0`.** The relocation table. Not needed so far, because every offset
   reached in practice is already correct relative to `OfsData`, but it should be
   understood before trusting a pointer chain in general.
