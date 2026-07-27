@@ -139,7 +139,37 @@ degree slope does not make you slide.** Deceleration is 0.125 per frame and the
 slope contributes only `0.0625 * sin(45) = 0.044`, so friction wins. That is
 Episode II's tuning, not a shortcut in this port.
 
+## Rolling
+
+Rolling is wired and runs entirely on Episode II's own numbers. It gives up
+steering completely and coasts on `RollFriction` **0.03125** against a running
+`GroundDeceleration` of **0.125** — four times lighter, which is the whole reason
+to do it — and it takes the stronger `SlopeFactorRolling` of **0.15625** against a
+running **0.0625**, so a curled Sonic outruns a running one downhill.
+
+Episode I halves the rolling friction while the stick is held into the direction
+of travel and doubles it otherwise, so steering into a roll extends it and
+steering against one kills it. Those are *shifts of Episode II's own value*, not
+magnitudes taken from Episode I.
+
+One number here is **not recovered**: the speed below which a roll ends and above
+which one can start. Episode I calls it `GMD_PL_STOP_SPD` and sets it to 0.5
+px/frame, which is what `Player.RollThreshold` uses — but 0.5 occurs 168 times in
+Episode II's constant pool, so unlike the parameter table it could not be
+confirmed. It is flagged as such in the code.
+
+## Spin dash — charge recovered, launch not
+
+The charge values are in the table and are Episode II's: base **3.0**, **2.0** per
+revolution, capped at **10.0**. What is missing is the conversion from charge to
+launch speed.
+
+Episode I computes it as `11.75 + charge / 8`, from `GMD_PL_SPINDASH_SPD` 48128
+and `GMD_PL_SPINDASH_MUL` 512. **`11.75` does not occur anywhere in Episode II's
+constant pool**, so that formula did not survive and guessing it would put an
+invented number into the one mechanic people can feel most precisely. Spin dash
+stays unimplemented until its own code is read.
+
 ## Not yet used
 
-Recovered and sitting in the table unused: everything about spin dash and
-rolling, `push_max`, and the pinball row.
+Recovered and sitting in the table unused: `push_max` and the pinball row.

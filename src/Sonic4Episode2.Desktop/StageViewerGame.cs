@@ -45,6 +45,7 @@ public sealed class StageViewerGame : Game
     private bool _tabHeld;
     private string _status = "";
     private int _shownRings = -1;
+    private bool _shownRolling;
 
     public StageViewerGame(string gameRoot, string actArchive)
     {
@@ -281,12 +282,15 @@ public sealed class StageViewerGame : Game
 
     protected override void Update(GameTime gameTime)
     {
-        if (_engine.RingCount != _shownRings)
+        bool rolling = _engine.Player?.Rolling ?? false;
+        if (_engine.RingCount != _shownRings || rolling != _shownRolling)
         {
             _shownRings = _engine.RingCount;
+            _shownRolling = rolling;
             Window.Title = $"Sonic 4 Episode II - rings {_shownRings}" +
                            (_engine.RingField is null
-                               ? "" : $" of {_engine.RingField.Count}");
+                               ? "" : $" of {_engine.RingField.Count}") +
+                           (rolling ? " - rolling" : "");
         }
 
         var keyboard = Keyboard.GetState();
@@ -308,6 +312,8 @@ public sealed class StageViewerGame : Game
                 keyboard.IsKeyDown(Keys.Z) ||
                 keyboard.IsKeyDown(Keys.Up) ||
                 keyboard.IsKeyDown(Keys.W);
+            _engine.Player.InputDown =
+                keyboard.IsKeyDown(Keys.Down) || keyboard.IsKeyDown(Keys.S);
         }
 
         _engine.Step();

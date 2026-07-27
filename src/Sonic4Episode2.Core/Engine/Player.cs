@@ -57,6 +57,26 @@ public sealed class Player : GameObject
     public float AirDrag => _physics.AirDrag * _scale;
     public float SlopeFactor => _physics.SlopeFactor * _scale;
     public float SlopeSpeedMax => _physics.SlopeSpeedMax * _scale;
+    public float RollFriction => _physics.RollFriction * _scale;
+    public float SlopeFactorRolling => _physics.SlopeFactorRolling * _scale;
+
+    /// <summary>Whether the player is curled into a roll.</summary>
+    public bool Rolling { get; private set; }
+
+    /// <summary>
+    /// Speed below which a roll ends and above which one can start.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not recovered.</b> Episode I calls this <c>GMD_PL_STOP_SPD</c> and sets
+    /// it to 0.5 px/frame; that value is used here, but 0.5 occurs 168 times in
+    /// Episode II's constant pool so it could not be confirmed the way the
+    /// parameter table was. Everything else about rolling comes from Episode II's
+    /// own numbers.
+    /// </remarks>
+    public float RollThreshold => 0.5f * _scale;
+
+    /// <summary>Input for the coming frame: crouch, which starts a roll.</summary>
+    public bool InputDown { get; set; }
 
     /// <summary>Ground angle under the player last frame, in degrees.</summary>
     public float GroundAngle { get; private set; }
@@ -74,6 +94,8 @@ public sealed class Player : GameObject
 
     private void Think()
     {
+        UpdateRollState();
+
         // Ground and air are separately tuned in the table, and the difference is
         // large - on the ground Sonic accelerates at 0.0354 px/frame and in the
         // air at 0.0625, with a much weaker brake.
@@ -81,7 +103,14 @@ public sealed class Player : GameObject
         float drag = OnGround ? Friction : AirDrag;
         float cap = OnGround ? MaxSpeed : AirSpeedMax;
 
-        if (InputX != 0f)
+        // Rolling gives up steering entirely and coasts on a much lighter
+        // friction - 0.03125 against 0.125 - which is what makes it worth doing.
+        if (Rolling && OnGround)
+        {
+            Velocity.X -= MathF.Sign(Velocity.X) *
+                          MathF.Min(MathF.Abs(Velocity.X), RollingDrag());
+        }
+        else if (InputX != 0f)
         {
             Velocity.X = SpeedUp(Velocity.X, InputX * accel, cap);
             FacingLeft = InputX < 0f;
@@ -101,6 +130,7 @@ public sealed class Player : GameObject
         {
             Velocity.Y = JumpVelocity;
             _cuttingJump = false;
+            Rolling = false;
         }
         _jumpHeld = InputJump;
 
@@ -113,6 +143,40 @@ public sealed class Player : GameObject
         Velocity.Y -= Gravity;
         if (_cuttingJump) Velocity.Y -= Gravity;
         if (Velocity.Y < -TerminalVelocity) Velocity.Y = -TerminalVelocity;
+    }
+
+    /// <summary>
+    /// Starts a roll when crouching with speed, and ends one that has run out.
+    /// </summary>
+    /// <remarks>
+    /// A roll survives leaving the ground, which is how rolling off a ledge keeps
+    /// you curled, but it can only be started while grounded.
+    /// </remarks>
+    private void UpdateRollState()
+    {
+        if (Rolling)
+        {
+            if (OnGround && MathF.Abs(Velocity.X) < RollThreshold) Rolling = false;
+            return;
+        }
+        if (OnGround && InputDown && MathF.Abs(Velocity.X) >= RollThreshold)
+            Rolling = true;
+    }
+
+    /// <summary>
+    /// Friction while rolling, which depends on what the stick is doing.
+    /// </summary>
+    /// <remarks>
+    /// Episode I halves the table's rolling friction when the player holds into
+    /// the direction of travel and doubles it otherwise, so steering into a roll
+    /// extends it and steering against one kills it. Both are shifts of Episode
+    /// II's own <c>spd_dec_spin</c>, not magnitudes borrowed from Episode I.
+    /// </remarks>
+    private float RollingDrag()
+    {
+        if (InputX == 0f) return RollFriction * 2f;
+        bool intoTravel = MathF.Sign(InputX) == MathF.Sign(Velocity.X);
+        return intoTravel ? RollFriction * 0.5f : RollFriction * 2f;
     }
 
     /// <summary>
@@ -140,8 +204,11 @@ public sealed class Player : GameObject
         if (angle is null) return;
 
         GroundAngle = angle.Value;
+        // Rolling uses a much stronger slope factor - 0.15625 against 0.0625 -
+        // which is why a curled Sonic outruns a running one downhill.
+        float factor = Rolling ? SlopeFactorRolling : SlopeFactor;
         Velocity.X = SpeedUp(Velocity.X,
-                             -SlopeFactor * MathF.Sin(angle.Value * MathF.PI / 180f),
+                             -factor * MathF.Sin(angle.Value * MathF.PI / 180f),
                              SlopeSpeedMax);
     }
 
