@@ -1,103 +1,116 @@
-# Sonic 4: Episode II — preservation and portable re-implementation
+# Sonic 4: Episode II
 
-A long-running effort to recover Sonic the Hedgehog 4 Episode II into portable,
-buildable source, in the spirit of the Episode I decompilation, so the game can
-be preserved and run on current hardware — phones included.
+Pulling Sonic the Hedgehog 4: Episode II apart and rebuilding it as portable
+source, so it outlives its 2012 Windows build and runs on things that fit in your
+pocket.
 
-## What this is, and what it is not
+# Status
 
-The Episode I project is a genuine *decompilation*. Its source was the Windows
-Phone 7 build, which Microsoft required to be managed .NET/XNA; managed
-assemblies carry full type and method metadata, so tools like ILSpy recover
-near-original C# automatically.
+Early, but the foundations are real. Every number below is verified against the
+*entire* Beta 8 data set, not one lucky file.
 
-**Episode II has no managed build.** `Sonic.exe` in this Beta 8 tree is native
-x86, compiled with Visual Studio 2008, linked against Direct3D 9, D3DX9_43,
-DirectInput8, DirectSound, XInput 1.3 and the Steam API, with no CLR references
-of any kind. `Launcher.exe` is a .NET WinForms settings dialog and contains no
-game logic. There is no push-button path from this binary to buildable source,
-and any claim otherwise is false.
+ - AMB archives — **1614/1614** parse, extraction is lossless
+ - Stage tile grids — **400/400** grids resolve exactly
+ - Object placement — **65/65** `.EV` files
+ - Texture banks — **651/651**, every texture name resolving to a real DDS
+ - Tile ids to 3D models — **13/13** act maps index cleanly into their tileset
+ - Nothing playable yet. No engine, no game code, don't get excited.
 
-So this is a **guided re-implementation**, not a decompilation. What makes it
-tractable rather than hopeless is that Episode II runs on the same engine as
-Episode I.
+Tools are Python with zero dependencies. `stagemap.py` renders layers to PNG,
+which is the fastest way to find out whether a decode is real or whether you have
+been staring at noise for an hour.
 
-## The Rosetta stone
+# Why this isn't a decompilation
 
-Episode II's own binary embeds the source path
-`e:\sega\sonic4ep2-beta\program\library\alicenn\source\library\amMalloc.h`.
-"AliceNN" is SEGA's in-house framework wrapping the NN graphics library, and the
-Episode I decompilation contains that same framework already recovered into
-readable C# — 31 files under `AppMain/Am/` (`AmFs`, `AmBind`, `AmModel`,
-`AmMotion`, `AmTexture`, `AmSprite`, `AmTask`, `AmCri`, ...) plus `AppMain/Nn/`.
+Because it can't be, and it's worth being upfront about that.
 
-The two games also share their data conventions exactly. Episode I's source
-refers to `G_COM/MENU/G_PAUSE.AMB`, `G_ZONE2/BOSS/BOSS02.AMB`,
-`DEMO/TITLE/D_TITLE.AMB` — all of which are directory-for-directory how this
-Episode II build is laid out on disk.
+Episode I is decompilable for exactly one reason: its Windows Phone 7 build. WP7
+banned native code, so everything shipped as managed .NET, and managed assemblies
+keep the metadata that lets ILSpy hand you back near-original C#.
 
-That means a large fraction of the engine does not have to be puzzled out of x86
-at all. Episode I tells us what each subsystem *does*; the binary tells us where
-Episode II differs. The reverse engineering effort then concentrates on what is
-genuinely new: Tails co-op and the combo moves, the new zones and bosses, and a
-renderer far more 3D-model-driven than Episode I's.
+Episode II never shipped on a platform with that restriction. Windows, PS3, 360,
+iOS, Android, Ouya, Shield — all native C++. A Windows Phone port was announced
+and then quietly cancelled, which is the single most annoying fact in this repo.
+`Sonic.exe` is native x86 out of Visual C++ 2008 with no PDB, no RTTI on game
+classes, and `/LTCG` smearing 663 translation units together. There is no button
+that turns that back into source.
 
-**Episode I is used as a behavioural oracle, not as a source to copy.** Its
-decompilation is public domain by its author's licence, but it is still machine-
-derived from SEGA's code. So the practice here is to read it to understand a
-format or a system, then write our own implementation, and independently verify
-every decoded format against Episode II's own data before documenting it as
-fact. Both formats decoded so far were confirmed that way.
+So this is a **re-implementation**, guided by reverse engineering. Different
+method, same destination.
 
-## Status
+# The trick that makes it possible
 
-Early. One phase is complete and verified.
+Both episodes run SEGA's AliceNN engine. Episode II's own binary admits it — an
+assert left the path `e:\sega\sonic4ep2-beta\program\library\alicenn\...` sitting
+in `.rdata`. And Episode I's decompilation contains that same engine already
+recovered into readable C#.
 
-- **Done — AMB archive format.** Fully decoded and documented in
-  [`docs/FORMAT-AMB.md`](docs/FORMAT-AMB.md). `tools/amb.py` reads, lists,
-  verifies and unpacks it, including nested archives. Verified against **all
-  1,614 archives in this build with zero parse failures**, and extraction is
-  lossless (validated by reconciling written-file counts against files on disk).
-- **Done — stage layout.** `.MP` and `.MD` decoded and documented in
-  [`docs/FORMAT-STAGEMAP.md`](docs/FORMAT-STAGEMAP.md), verified across all 400
-  grids in the build. `tools/stagemap.py` reads them and renders each layer to a
-  PNG; the Zone 1 Act 1 render is recognisable platformer terrain.
-- **Done — binary survey.** [`docs/ENGINE.md`](docs/ENGINE.md): ~8,000 functions
-  of which ~6,600 are game code, no PDB, no game-code RTTI, and all 1,843 shaders
-  are Shader Model 3.0 bytecode — which matters, because that is a format
-  MojoShader already translates for mobile.
-- **Next** — the remaining formats inside the archives: NN models and motions
-  (`.ZNO`/`.ZNM`/`.ZNV`), texture banks (`.TXB`), effects (`.AME`), and the event
-  scripts (`.EV`) that place objects in a stage.
-- **Not started** — the engine and the game logic.
+Better still, the data conventions are identical. Episode I's source references
+`G_COM/MENU/G_PAUSE.AMB` and `G_ZONE2/BOSS/BOSS02.AMB` — directories this build
+ships verbatim.
 
-See [`plans/EXECPLAN.md`](plans/EXECPLAN.md) for the phased plan and
-[`docs/RESUME-HERE.md`](docs/RESUME-HERE.md) for current state.
+So Episode I gets used as a **behavioural oracle**: read it to learn what a
+format or subsystem *means*, then write our own implementation and verify it
+against Episode II's actual bytes. Every format here was confirmed that way
+before being written down. Where the two disagree, Episode II's data wins.
 
-## Tools
+# Credit where it's absolutely due
 
-`tools/amb.py` needs only Python 3.10+ and no third-party packages. Run it from
-the game root:
+This project stands entirely on work other people did first, and it would not
+exist otherwise.
+
+ - **WamWooWam**, for [Sonic 4 Episode 1 Deluxe](https://github.com/WanKerr/Sonic4Episode1)
+   — the clean, well-split Episode I decompilation that serves as the oracle for
+   basically everything here. Released into the public domain, which is a
+   generosity worth calling out.
+ - **TGEnigma**, for the [original Episode I decompile](https://github.com/TGEnigma/Sonic4Ep1-WindowsPhone-Decompilation)
+   that the above was built in response to.
+ - **Hidden Palace** and **Obscure Gamers**, for preserving the prototypes.
+
+Reading someone else's decompilation of the sibling game is a wildly unfair
+advantage and I'm not going to pretend otherwise.
+
+# What's actually in here
+
+| | |
+|---|---|
+| `tools/amb.py` | AMB archive reader — list, extract, bulk unpack, verify |
+| `tools/stagemap.py` | stage grids, object placement, tileset resolution, PNG previews |
+| `tools/txb.py` | texture banks |
+| `docs/` | format specifications, all marked VERIFIED / INFERRED / OPEN |
+| `plans/EXECPLAN.md` | the roadmap and why the PC build was chosen |
 
 ```sh
-python Sonic4Episode2/tools/amb.py list   G_COM/MENU/G_PAUSE.AMB
-python Sonic4Episode2/tools/amb.py verify .
-python Sonic4Episode2/tools/amb.py bulk   . ../unpacked
+python tools/amb.py verify .
+python tools/stagemap.py render  G_ZONE1/MAP/ZONE11_MAP.AMB out/ --scale 2
+python tools/stagemap.py tileset G_ZONE1/MAP/ZONE11_MAP.AMB
+python tools/txb.py    list      G_ZONE1/MAP/ZONE1_T.AMB
 ```
 
-A full unpack of the 1.2 GB data set produces roughly the same volume again, so
-budget disk accordingly.
+# Issues
 
-## Target platforms
+## The stages are 3D and I was hoping they wouldn't be
 
-Episode I builds as an MSBuild *shared project* consumed by thin per-platform
-head projects (FNA, XNA, UWP, WebAssembly, WP7). Episode II will follow the same
-shape, since it is what makes "runs on phones" achievable: the shared engine and
-game code stay platform-neutral, and MonoGame covers Android and iOS while FNA
-covers desktop.
+Tile ids don't point at sprites, they index a per-zone archive of ZNO models —
+297 of them for Zone 1 alone. So a "stage viewer" means parsing SEGA NN geometry,
+not blitting tiles. Verified on all 13 act maps, and the histogram is exactly
+what you'd want: `Z1_G_FL_A.ZNO` (floor) placed 12,552 times, `Z1_G_HASIRA_B.ZNO`
+(柱, pillar) 2,458, walls after that.
 
-## Scope
+## The renderer won't come for free
 
-This repository contains engineering work only — tools, documentation and source.
-It contains no game assets. Running anything built here requires your own copy of
-the game, and the data files stay where they are.
+Episode I's graphics layer is a fixed-function OpenGL ES 1.x shim. Episode II is
+shader-driven: 3,577 models and 1,843 Shader Model 3.0 shaders. The oracle runs
+out right about here. The shaders themselves should translate through MojoShader,
+which is what FNA already does — but that needs proving, not assuming.
+
+## Object ids are still anonymous
+
+Roughly 298 object names live in the binary as immediates pushed inside each
+object's own code rather than in a lookup table, so mapping id 724 to a name
+needs disassembly rather than a clever grep.
+
+# No assets here, ever
+
+Tools and documentation only. Nothing in this repository will run without your
+own legally acquired copy of the game, and the data stays where it is.

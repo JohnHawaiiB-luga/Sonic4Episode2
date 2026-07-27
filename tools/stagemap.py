@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import struct
 import sys
 import zlib
@@ -226,6 +227,63 @@ def read_events(data: bytes) -> list[Placement]:
     return [Placement(bx, by, raw) for bx, by, raw in read_blocks(data, BLOCK_STRIDE[".EV"])]
 
 
+GEOMETRY_LAYERS = ("_A.MP", "_B.MP", "_N.MP", "_M.MP", "_M1.MP", "_M2.MP", "_M3.MP")
+_ACT_RE = re.compile(r"^ZONE([0-9F]+?)(\d)([A-C]?)_MAP\.AMB$", re.I)
+
+
+def find_tileset(act_archive: str) -> str | None:
+    """Locate the model archive whose entries a stage's tile ids index into.
+
+    Acts are named ZONE<zone><act>[<tileset>]_MAP.AMB and their geometry comes
+    from ZONE<zone>[<tileset>]_M.AMB in the same directory. A zone with a single
+    shared tileset omits the letter.
+    """
+    directory = os.path.dirname(os.path.abspath(act_archive))
+    match = _ACT_RE.match(os.path.basename(act_archive))
+    if not match:
+        return None
+    zone, tileset = match.group(1), match.group(3).upper()
+    for candidate in (f"ZONE{zone}{tileset}_M.AMB", f"ZONE{zone}_M.AMB"):
+        path = os.path.join(directory, candidate)
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def cmd_tileset(args) -> int:
+    """Resolve the tile ids an act uses to model names in its tileset archive."""
+    tileset = args.tileset or find_tileset(args.archive)
+    if not tileset:
+        print("could not locate the tileset model archive; pass --tileset", file=sys.stderr)
+        return 1
+
+    models = amb.load(tileset)
+    names = {e.index: e.name.replace(chr(92), "/").rsplit("/", 1)[-1] for e in models}
+
+    archive = amb.load(args.archive)
+    used: dict[int, int] = {}
+    for entry in archive:
+        upper = entry.name.upper()
+        if "_ATTR_" in upper or not any(upper.endswith(s) for s in GEOMETRY_LAYERS):
+            continue
+        grid = Grid(entry.name, archive.read(entry))
+        for value in grid.cells:
+            tid = value & 0x0FFF
+            if tid:
+                used[tid] = used.get(tid, 0) + 1
+
+    print(f"{os.path.basename(args.archive)} -> {os.path.basename(tileset)} "
+          f"({len(models)} models)")
+    print(f"{len(used)} distinct tile ids referenced, {sum(used.values())} placements")
+    out_of_range = [t for t in used if t >= len(models)]
+    for tid, count in sorted(used.items(), key=lambda kv: -kv[1])[: args.top]:
+        print(f"  id {tid:<5} x{count:<6} {names.get(tid, '<out of range>')}")
+    if out_of_range:
+        print(f"  ! {len(out_of_range)} ids fall outside the archive", file=sys.stderr)
+        return 1
+    return 0
+
+
 def cmd_events(args) -> int:
     from collections import Counter
 
@@ -282,6 +340,12 @@ def main(argv=None) -> int:
     p = sub.add_parser("info", help="summarise the layers of a stage archive")
     p.add_argument("archive")
     p.set_defaults(func=cmd_info)
+
+    p = sub.add_parser("tileset", help="resolve tile ids to model names")
+    p.add_argument("archive")
+    p.add_argument("--tileset")
+    p.add_argument("--top", type=int, default=10)
+    p.set_defaults(func=cmd_tileset)
 
     p = sub.add_parser("events", help="list object placements from the .EV files")
     p.add_argument("archive")
