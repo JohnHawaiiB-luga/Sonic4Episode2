@@ -1,0 +1,180 @@
+using Sonic4Episode2.Core.Assets;
+
+namespace Sonic4Episode2.Core;
+
+/// <summary>
+/// Builds a stage's geometry by instancing each tile's model onto the grid.
+/// </summary>
+/// <remarks>
+/// Two facts drive the placement, both established by measurement rather than
+/// assumption:
+/// <list type="bullet">
+/// <item>A grid cell is <b>20 world units</b>. The dominant tile bounding box is
+/// exactly 20x20, with multi-cell pieces at 40 and 60.</item>
+/// <item>Models carry a <b>fixed authored origin unrelated to placement</b> —
+/// tile 32 appears at cells (98,0) through (98,5) reporting the same centre
+/// every time, because the tileset was laid out side by side in one authoring
+/// scene. Each model is therefore re-centred on its own bounding box before
+/// being instanced.</item>
+/// </list>
+/// This reconstructs the engine's transform rather than reproducing it: the
+/// silhouette matches the tile grid exactly, but exactness is unproven.
+/// </remarks>
+public sealed class StageAssembler
+{
+    public const float CellSize = 20.0f;
+
+    /// <summary>Layer suffix to depth, following the parallax ordering.</summary>
+    private static readonly Dictionary<string, float> LayerDepth = new()
+    {
+        ["_A"] = 128f, ["_B"] = -128f, ["_N"] = 256f,
+        ["_M"] = -256f, ["_M1"] = -384f, ["_M2"] = -512f, ["_M3"] = -640f,
+    };
+
+    private readonly Dictionary<int, TileMesh?> _cache = [];
+    private readonly AmbArchive _tileset;
+
+    public StageAssembler(AmbArchive tileset) => _tileset = tileset;
+
+    public int TilesPlaced { get; private set; }
+    public int TilesSkipped { get; private set; }
+
+    /// <summary>
+    /// Instances every non-empty cell of one layer, appending to the batch.
+    /// </summary>
+    public void AddLayer(StageGrid grid, string layerSuffix, StageBatch batch,
+                         int regionX = 0, int regionY = 0,
+                         int regionWidth = int.MaxValue, int regionHeight = int.MaxValue)
+    {
+        if (grid.Depth != 2) return;
+        float depth = LayerDepth.GetValueOrDefault(layerSuffix, 0f);
+
+        for (int y = Math.Max(0, regionY); y < Math.Min(grid.Height, regionY + regionHeight); y++)
+        for (int x = Math.Max(0, regionX); x < Math.Min(grid.Width, regionX + regionWidth); x++)
+        {
+            var tile = grid.Tile(x, y);
+            if (tile.IsEmpty) continue;
+
+            var mesh = GetTile(tile.Id);
+            if (mesh is null) { TilesSkipped++; continue; }
+
+            // Grid Y grows downward, world Y grows upward.
+            batch.Add(mesh, x * CellSize, -y * CellSize, depth);
+            TilesPlaced++;
+        }
+    }
+
+    private TileMesh? GetTile(int id)
+    {
+        if (_cache.TryGetValue(id, out var cached)) return cached;
+
+        TileMesh? mesh = null;
+        if (id >= 0 && id < _tileset.Count)
+        {
+            try
+            {
+                var model = NnModel.Load(_tileset.Read(_tileset.Entries[id]));
+                if (model is not null && !model.Header.IsLocator)
+                    mesh = TileMesh.From(model);
+            }
+            catch (Exception ex) when (ex is NnException or AmbException)
+            {
+                mesh = null;
+            }
+        }
+        _cache[id] = mesh;
+        return mesh;
+    }
+}
+
+/// <summary>One tile's geometry, re-centred on its bounding box.</summary>
+public sealed class TileMesh
+{
+    public required float[] Positions { get; init; }      // xyz triples
+    public required float[] TexCoords { get; init; }      // uv pairs
+    public required int[] Indices { get; init; }
+    public required string?[] TriangleTextures { get; init; }
+
+    public static TileMesh From(NnModel model)
+    {
+        var positions = new List<float>();
+        var texCoords = new List<float>();
+        var indices = new List<int>();
+        var textures = new List<string?>();
+
+        float cx = model.Header.CenterX, cy = model.Header.CenterY, cz = model.Header.CenterZ;
+
+        foreach (var mesh in model.MeshSets)
+        {
+            if (mesh.VertexListIndex < 0 || mesh.VertexListIndex >= model.VertexLists.Count) continue;
+            if (mesh.PrimitiveListIndex < 0 || mesh.PrimitiveListIndex >= model.PrimitiveLists.Count) continue;
+
+            var vertexList = model.VertexLists[mesh.VertexListIndex];
+            int baseIndex = positions.Count / 3;
+
+            var buffer = new float[vertexList.Count * 3];
+            vertexList.ReadPositions(buffer);
+            for (int i = 0; i < vertexList.Count; i++)
+            {
+                positions.Add(buffer[i * 3 + 0] - cx);
+                positions.Add(buffer[i * 3 + 1] - cy);
+                positions.Add(buffer[i * 3 + 2] - cz);
+                texCoords.Add(0f);
+                texCoords.Add(0f);
+            }
+
+            string? texture = model.TextureFor(mesh);
+            foreach (var (a, b, c) in model.PrimitiveLists[mesh.PrimitiveListIndex].Triangles())
+            {
+                if (a >= vertexList.Count || b >= vertexList.Count || c >= vertexList.Count) continue;
+                indices.Add(baseIndex + a);
+                indices.Add(baseIndex + b);
+                indices.Add(baseIndex + c);
+                textures.Add(texture);
+            }
+        }
+
+        return new TileMesh
+        {
+            Positions = [.. positions],
+            TexCoords = [.. texCoords],
+            Indices = [.. indices],
+            TriangleTextures = [.. textures],
+        };
+    }
+}
+
+/// <summary>Accumulated stage geometry in world space.</summary>
+public sealed class StageBatch
+{
+    public List<float> Positions { get; } = [];
+    public List<int> Indices { get; } = [];
+
+    public float MinX { get; private set; } = float.MaxValue;
+    public float MaxX { get; private set; } = float.MinValue;
+    public float MinY { get; private set; } = float.MaxValue;
+    public float MaxY { get; private set; } = float.MinValue;
+
+    public int TriangleCount => Indices.Count / 3;
+    public int VertexCount => Positions.Count / 3;
+
+    public void Add(TileMesh mesh, float offsetX, float offsetY, float depth)
+    {
+        int baseIndex = Positions.Count / 3;
+        for (int i = 0; i < mesh.Positions.Length; i += 3)
+        {
+            float x = mesh.Positions[i] + offsetX;
+            float y = mesh.Positions[i + 1] + offsetY;
+            Positions.Add(x);
+            Positions.Add(y);
+            Positions.Add(mesh.Positions[i + 2] + depth);
+
+            if (x < MinX) MinX = x;
+            if (x > MaxX) MaxX = x;
+            if (y < MinY) MinY = y;
+            if (y > MaxY) MaxY = y;
+        }
+        foreach (int index in mesh.Indices)
+            Indices.Add(baseIndex + index);
+    }
+}

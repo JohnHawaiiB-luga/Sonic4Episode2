@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sonic4Episode2.Core", "Soni
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sonic4Episode2.Cli", "Sonic4Episode2.Cli\Sonic4Episode2.Cli.csproj", "{39D955D7-38CB-4204-A87C-18B49A5379CC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sonic4Episode2.Desktop", "Sonic4Episode2.Desktop\Sonic4Episode2.Desktop.csproj", "{86F56060-5D02-487C-964C-1CA49903592E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -41,6 +43,18 @@ Global
 		{39D955D7-38CB-4204-A87C-18B49A5379CC}.Release|x64.Build.0 = Release|Any CPU
 		{39D955D7-38CB-4204-A87C-18B49A5379CC}.Release|x86.ActiveCfg = Release|Any CPU
 		{39D955D7-38CB-4204-A87C-18B49A5379CC}.Release|x86.Build.0 = Release|Any CPU
+		{86F56060-5D02-487C-964C-1CA49903592E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{86F56060-5D02-487C-964C-1CA49903592E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{86F56060-5D02-487C-964C-1CA49903592E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{86F56060-5D02-487C-964C-1CA49903592E}.Debug|x64.Build.0 = Debug|Any CPU
+		{86F56060-5D02-487C-964C-1CA49903592E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{86F56060-5D02-487C-964C-1CA49903592E}.Debug|x86.Build.0 = Debug|Any CPU
+		{86F56060-5D02-487C-964C-1CA49903592E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{86F56060-5D02-487C-964C-1CA49903592E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{86F56060-5D02-487C-964C-1CA49903592E}.Release|x64.ActiveCfg = Release|Any CPU
+		{86F56060-5D02-487C-964C-1CA49903592E}.Release|x64.Build.0 = Release|Any CPU
+		{86F56060-5D02-487C-964C-1CA49903592E}.Release|x86.ActiveCfg = Release|Any CPU
+		{86F56060-5D02-487C-964C-1CA49903592E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

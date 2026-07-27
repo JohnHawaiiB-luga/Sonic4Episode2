@@ -20,7 +20,9 @@ Early, but the foundations are real. Every number below is verified against the
    plan credible rather than hopeful
  - Textures — **2853/2853** decode, and stages render **with their real
    artwork**: Sylvania Castle comes out as sandstone, water and foliage
- - Nothing playable yet. No engine, no game code, don't get excited.
+ - **A desktop viewer runs** — MonoGame window, Zone 1 Act 1 assembled live from
+   the archives at 17,526 tiles
+ - Nothing playable yet. No player, no physics, no game logic, don't get excited.
 
 Tools are Python with zero dependencies. `stagemap.py` renders layers to PNG,
 which is the fastest way to find out whether a decode is real or whether you have

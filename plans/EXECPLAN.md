@@ -113,13 +113,15 @@ task count, and are deliberately pessimistic.
 |-------|-------:|-----:|-------------:|
 | 1. Asset formats | 12% | ~85% | 10.2% |
 | 2. Geometry, audio, shaders | 18% | ~90% | 16.2% |
-| 3. Engine port | 20% | ~15% | 3.0% |
+| 3. Engine port | 20% | ~25% | 5.0% |
 | 4. Game logic | 35% | 0% | 0% |
 | 5. Mobile targets | 15% | ~3% | 0.5% |
-| **Total** | | | **≈ 30%** |
+| **Total** | | | **≈ 32%** |
 
-**Runnable code: 0%.** Nothing in this repository executes the game on any
-platform. That number moves off zero in phase 3, not before.
+**Runnable: a viewer, not the game.** `Sonic4Episode2.Desktop` opens a MonoGame
+window and renders a stage assembled live from the original archives - 17,526
+tiles for Zone 1 Act 1. That is the first thing here that runs at all. It has no
+player, no physics and no game logic, so **the playable game remains at 0%**.
 
 A caveat worth stating plainly, because it is easy to assume otherwise: *the PC
 platform is not already solved.* The original `Sonic.exe` does run on Windows —
@@ -177,8 +179,10 @@ material struct) and motion playback (`NZMO` untouched).
 - [x] AMB and stage grids ported to C# and **cross-verified against the Python
       tools** - identical counts across 1,614 archives
 - [x] NN container, geometry, nodes, materials, motions ported and cross-verified
-- [ ] Port the DDS decoder and the stage assembler
-- [ ] Stand up the platform heads (desktop first)
+- [x] DDS decoder and stage assembler ported
+- [x] **Desktop head runs**: a MonoGame window rendering a stage assembled
+      live from the original archives
+- [ ] Android and iOS heads
 - [ ] Port the Episode I `Am*` / `Nn*` engine layer, adapting the file system and
       binding layer to the Episode II data set
 - [ ] Task scheduler, state machine, object system
