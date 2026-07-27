@@ -65,6 +65,9 @@ public sealed class GameEngine
     /// <summary>The player, once a stage scene has created one.</summary>
     public Player? Player { get; private set; }
 
+    /// <summary>Object placements read from the stage's `.EV` files.</summary>
+    public IReadOnlyList<Placement> Placements { get; private set; } = [];
+
     public string? StageName { get; private set; }
     public ulong Frame { get; private set; }
 
@@ -93,6 +96,7 @@ public sealed class GameEngine
 
         var assembler = new StageAssembler(AmbArchive.Load(tilesetPath));
         var batch = new StageBatch();
+        var placements = new List<Placement>();
 
         foreach (var entry in archive.Entries)
         {
@@ -106,6 +110,18 @@ public sealed class GameEngine
                     StageGrid.Parse(label, archive.Read(entry).Span));
                 continue;
             }
+            if (label.EndsWith(".EV", StringComparison.OrdinalIgnoreCase))
+            {
+                // Three variants ship per act - ZONE11.EV, ZONE11A.EV,
+                // ZONE11C.EV - and what selects between them is not known. Take
+                // the base one, which carries the main object set: it is the
+                // variant whose name ends in a digit rather than a letter.
+                string stem = label[..^3];
+                if (stem.Length > 0 && char.IsDigit(stem[^1]))
+                    placements.AddRange(
+                        EventPlacements.Parse(archive.Read(entry).Span).Items);
+                continue;
+            }
             if (!label.EndsWith("_B.MP", StringComparison.OrdinalIgnoreCase)) continue;
 
             var grid = StageGrid.Parse(label, archive.Read(entry).Span);
@@ -113,9 +129,10 @@ public sealed class GameEngine
         }
 
         Stage = batch;
+        Placements = placements;
         StageName = Path.GetFileNameWithoutExtension(actPath);
         Status = $"{assembler.TilesPlaced} tiles, {batch.VertexCount:N0} vertices, " +
-                 $"{batch.TriangleCount:N0} triangles";
+                 $"{batch.TriangleCount:N0} triangles, {placements.Count} placements";
 
         // The map is a task like anything else, so it obeys pause levels and is
         // torn down with the scene rather than by special-case code.
@@ -142,6 +159,7 @@ public sealed class GameEngine
         StageName = null;
         Collision = null;
         Player = null;
+        Placements = [];
     }
 
     /// <summary>Runs one frame.</summary>
