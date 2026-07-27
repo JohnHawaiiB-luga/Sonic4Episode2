@@ -461,10 +461,45 @@ a palette of node indices should look like. Across the build it falls apart:
 
 Two of three are near chance. So either the palette is somewhere else, or those
 dwords mean something else and Sonic's `0,1,2,3,4` is a coincidence of a
-five-element array of small numbers. The next attempt should start from the
-engine's own model loader rather than from the data — the technique that settled
-collision addressing, the object table and the spin dash, and which has not failed
-yet.
+five-element array of small numbers.
+
+### What the shaders say
+
+The game's own vertex shaders settle the *shape* of the skinning, even though the
+palette's storage is still open. Walking all 1,843 shaders for **relative
+addressing on a constant register** — the unmistakable marker of palette skinning
+— finds **126 vertex shaders that use it**.
+
+One of them, `...RDMRC00000020.VSH` (`vs_3_0`), reads:
+
+```
+mul   r2, c75, v2            ; scale the index by a constant
+mova  a0, r2                 ; into the address register
+mul   r1, v1, c[a0.x + 3]    ; weight times a matrix row
+mad   r1, c[a0.x + 3], v1, r1
+...
+dp4   r0, v0, r1             ; against the position
+```
+
+So:
+
+- **`v0` is the position, `v1` the blend weights, `v2` the blend indices.**
+- A bone is **four constant registers**, indexed `c[a0.x + 0..3]`.
+- The index is scaled by `c75` before use, which is how a bone number becomes a
+  register offset.
+- Highest constant register across the skinning shaders runs to **c142**, so the
+  palette is large — consistent with `n_mtxpal` being 99 on Sonic.
+
+**The open question is now narrow and specific.** The vertex carries weights and,
+by the stride arithmetic, nothing else — 48 bytes on Sonic is exactly position 12,
+weights 16, normal 12, texture coordinates 8. Yet the shader reads indices from a
+separate input register. Either the indices are packed into those same 16 bytes
+alongside the weights, or the declaration feeds `v2` from somewhere the stride
+does not account for.
+
+The next step is the **D3D9 vertex declaration** the engine builds per vertex
+list. That names each element's offset, type and usage outright, and settles both
+questions at once.
 
 ## Still open
 
