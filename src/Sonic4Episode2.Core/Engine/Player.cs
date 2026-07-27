@@ -26,8 +26,8 @@ public sealed class Player : GameObject
     public static float Height => 25f * PlayerPhysics.WorldPerPixel;
 
     private readonly CollisionMap _collision;
-    private readonly PlayerPhysics _physics;
     private readonly float _scale;
+    private PlayerPhysics _physics;
 
     public Player(CollisionMap collision) : this(collision, PlayerPhysics.Sonic) { }
 
@@ -43,6 +43,69 @@ public sealed class Player : GameObject
 
     /// <summary>The tuning this player runs on.</summary>
     public PlayerPhysics Physics => _physics;
+
+    /// <summary>Which character's block the tuning comes from.</summary>
+    public int Character { get; private set; }
+
+    /// <summary>Which of that character's modes is active.</summary>
+    public int Mode { get; private set; }
+
+    /// <summary>
+    /// Switches to another row of the parameter table.
+    /// </summary>
+    /// <remarks>
+    /// This is what the table's eleven modes per character are for: the same
+    /// player runs on different tuning underwater, in a special stage, on the Mad
+    /// Gear, or transformed. Speed carries across the switch — becoming Super does
+    /// not stop you.
+    /// </remarks>
+    public void SetMode(int character, int mode)
+    {
+        Character = character;
+        Mode = mode;
+        _physics = PlayerPhysics.For(character, mode);
+    }
+
+    /// <summary>
+    /// Rings needed to transform.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not recovered.</b> Fifty is the series-wide figure and is what this
+    /// uses, but nothing in Episode II's binary has been read to confirm it, the
+    /// way <see cref="PlayerPhysics"/>'s values were. Treat it as a placeholder
+    /// with a plausible value rather than as data.
+    /// </remarks>
+    public const int RingsForSuper = 50;
+
+    /// <summary>Whether this player is currently transformed.</summary>
+    public bool IsSuper => Mode == SuperMode;
+
+    /// <summary>The Super row of each character's block.</summary>
+    public const int SuperMode = 1;
+
+    /// <summary>Normal ground tuning — mode 0 of the character's block.</summary>
+    public const int NormalMode = 0;
+
+    /// <summary>
+    /// Transforms if the ring count allows it, and reports whether it did.
+    /// </summary>
+    /// <remarks>
+    /// Character 2 has no Super row — its mode 1 repeats its normal values — so
+    /// asking it to transform changes nothing, which is the correct outcome
+    /// rather than a special case worth branching on.
+    /// </remarks>
+    public bool TryGoSuper(int rings)
+    {
+        if (IsSuper || rings < RingsForSuper) return false;
+        SetMode(Character, SuperMode);
+        return true;
+    }
+
+    /// <summary>Drops back to normal tuning.</summary>
+    public void RevertFromSuper()
+    {
+        if (IsSuper) SetMode(Character, NormalMode);
+    }
 
     // Every constant in the table is a game-pixel figure; these are the world-unit
     // equivalents this object actually integrates with.

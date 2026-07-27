@@ -247,6 +247,7 @@ public sealed class GameEngine
         if (RingField is null || Player is null) return;
         RingCount += RingField.Collect(new System.Numerics.Vector2(
             Player.Position.X, Player.Position.Y));
+        Player.TryGoSuper(RingCount);
     }
 
     /// <summary>Runs one frame.</summary>
