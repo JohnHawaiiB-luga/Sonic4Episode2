@@ -1,10 +1,35 @@
-# ExecPlan — Sonic 4 Episode II portable re-implementation
+# ExecPlan — Sonic 4 Episode II portable reimplementation
 
 ## Objective
 
-Recover Episode II into portable, buildable source that runs on desktop and
-mobile, preserving the game against the loss of its original 2012 Windows build.
-Reference build: Sonic 4 Episode 2 PC Beta 8 (April 2012).
+A **clean-room, reverse-engineered reimplementation** of Episode II in portable,
+buildable C# that runs on desktop and mobile, preserving the game against the loss
+of its original builds. Reference build: Sonic 4 Episode 2 PC Beta 8 (April 2012),
+the HD/console lineage.
+
+**Why a reimplementation and not a decompilation.** A matching decompilation needs
+either managed bytecode (which decompiles losslessly) or the will to hand-match a
+native binary byte-for-byte on one platform. Episode II is **all native** — the
+x86 PC/console build and the ARM Android library — with **no managed build**
+(the Windows Phone 7 port was cancelled). Episode I could be a decompilation
+precisely because its source was managed (the older mobile version). Episode II
+therefore gets the correct treatment for native, multi-platform material: a
+from-scratch reimplementation that reproduces behaviour 1:1, reading the binaries
+and data as **oracles**, never transcribing them. The payoff — total engine
+control, deep modding, translations, QoL, preservation — is identical to a
+decompilation's.
+
+## The two-act roadmap
+
+- **Act 1 — the reimplementation (this plan, in progress).** The whole deliverable:
+  a faithful, portable, moddable Episode II. The phases below are Act 1.
+- **Act 2 — an optional matching decompilation (future stretch).** A developer
+  build of the Android port surfaced with its full symbol table — 24,263 named
+  functions — the one asset that makes a rigorous matching decomp of this game
+  tractable. Act 1's understanding is exactly Act 2's groundwork, so pursuing Act 1
+  first loses nothing toward it. Best decomp target: the symbolized `libfox.so`
+  (the stripped PC release is a far harder target). Not committed — a someday arc
+  the reimplementation sets up.
 
 ## Entry criteria — established
 

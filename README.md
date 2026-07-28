@@ -1,8 +1,46 @@
 # Sonic 4: Episode II
 
-Pulling Sonic the Hedgehog 4: Episode II apart and rebuilding it as portable
-source, so it outlives its 2012 Windows build and runs on things that fit in your
-pocket.
+A **clean-room, reverse-engineered reimplementation** of Sonic the Hedgehog 4:
+Episode II — the game pulled apart and rebuilt from scratch as portable C# source,
+so it outlives its original builds and runs on desktop and on things that fit in
+your pocket.
+
+## What this is (and what it is not)
+
+This is a **reimplementation / source port**, not a matching decompilation — and
+that is the correct approach for this game, not a compromise:
+
+- **Episode I** could be a *decompilation* because its source was a **managed
+  .NET build** (the older mobile lineage), which decompiles back to C# almost
+  losslessly. That is also why the Episode I decomp is the pre-HD mobile version.
+- **Episode II has no managed build to decompile.** Every Episode II binary is
+  **native** compiled C++ — the x86 PC/console line and the ARM Android library.
+  The one managed port that would have existed, Windows Phone 7, was cancelled.
+  Native code does not decompile to clean, buildable source.
+
+So Episode II gets the thing that *does* work: a from-scratch reimplementation
+that reproduces the game 1:1 in behaviour, built by reading the original binaries
+and data as **oracles** — never transcribing them. It is based on the **PC build
+(the HD/console lineage)**, so it targets the definitive version of the game, not
+the dated mobile one, and — like the Episode I decomp — it runs on phones.
+
+The payoff is identical to a decompilation's: total control of the engine and every
+system, modding far beyond asset swaps, translations, quality-of-life features,
+debugging, and — above all — **preservation**. Episode I and II were pulled from
+the mobile stores years ago; the official builds are already vanishing. This is the
+copy that survives, and that you own.
+
+### The roadmap — a two-act arc
+
+- **Act 1 (in progress):** the portable reimplementation. Delivers the whole point
+  — a faithful, moddable, preservation-grade Episode II on desktop and mobile.
+- **Act 2 (a future stretch, now made possible):** an optional *matching*
+  decompilation. A developer build of the Android port surfaced with its full
+  symbol table intact — 24,263 named functions — which is the single asset that
+  makes a rigorous matching decomp of this game tractable at all. Act 1 produces
+  exactly the understanding Act 2 would need, so nothing here is wasted toward it.
+
+The rest of this document is the engineering record of Act 1.
 
 ![Zone 1 Act 1, whole act](docs/images/collision-zone1act1-wide.png)
 
@@ -12,25 +50,43 @@ level designer put them. Nothing here is traced or redrawn.*
 
 # Status
 
-Early, but the foundations are real. Every number below is verified against the
-*entire* Beta 8 data set, not one lucky file.
+**≈70% through the reverse engineering; ~46% rendering fidelity.** Two separate
+numbers on purpose: the first is how much of the game has been decoded out of its
+files, the second is how close the picture is to the original. 193 tests, all
+green. Every number below is verified against the *entire* data set, not one lucky
+file.
 
- - AMB archives — **1614/1614** parse, extraction is lossless
- - Stage tile grids — **400/400** grids resolve exactly
- - Object placement — **65/65** `.EV` files
- - Texture banks — **651/651**, every texture name resolving to a real DDS
- - Tile ids to 3D models — **13/13** act maps index cleanly into their tileset
- - Whole stages assemble — **17,526 tiles** instanced into 1.6M triangles for
-   Zone 1 Act 1, and the orthographic render matches the tile grid's silhouette
- - Shaders — **1843/1843** parse as clean SM3.0, which is what makes the mobile
-   plan credible rather than hopeful
- - Textures — **2853/2853** decode, and stages render **with their real
-   artwork**: Sylvania Castle comes out as sandstone, water and foliage
- - **A desktop viewer runs** — MonoGame window, Zone 1 Act 1 assembled live from
-   the archives at 17,526 tiles
- - **You can run and jump on Zone 1 Act 1** — real geometry, real collision from
-   the stage's attribute layer. Physics constants are placeholders, there are no
-   objects or enemies, and there is no goal. It is a slice, not a game.
+**Formats — decoded and verified across the whole build:**
+
+ - AMB archives — **1614/1614** parse, extraction lossless
+ - Stage tile grids — **400/400** resolve exactly; stages are grids of 3D models
+ - Texture banks — **651/651**; textures — **2853/2853** decode
+ - NN model containers — **5727/5727**; geometry from **3546** models
+ - **Node hierarchies, skinning weights + blend indices, and motion keyframes** —
+   animation decoded and sampling; rigid models pose and animate
+ - **Collision** — height fields and per-cell surface angles, cross-validated
+   over 23,474 cells
+ - Shaders — **1843/1843** parse as clean SM3.0
+ - Material blend modes, CRI audio containers, DDS
+
+**Recovered from the game's own binary, not guessed:** the object dispatch table
+(803 slots), the player physics table (3 characters × 11 modes), the spin-dash
+formula, collision addressing, the `.EV` record layout, and a 390-entry asset
+manifest.
+
+**What plays.** An act mounts from the original archives and Sonic **runs, jumps,
+rolls and spin-dashes** on real geometry, following per-column heights and stored
+slope angles with Episode II's own recovered physics. **Rings** collect and
+trigger Super at 50; **springs** launch, **dash panels** boost. The player
+**spawns at the act's real start marker and clears the act at the real goal
+panel** — Zone 1 Act 1 is playable start to finish. Placed **gimmicks render and
+animate**, and the **sky** draws from the far-background archive. Still missing:
+damage, enemies, bosses, most of the 382 object behaviours, and a skinned
+character model (the player is a placeholder). **A slice of a game, becoming a
+game.**
+
+**Mobile.** The core and renderer are fully filesystem-free; `Sonic4Episode2.Android`
+**builds a signed APK**. Not yet run on a device. See `docs/MOBILE.md`.
 
 Tools are Python with zero dependencies. `stagemap.py` renders layers to PNG,
 which is the fastest way to find out whether a decode is real or whether you have
