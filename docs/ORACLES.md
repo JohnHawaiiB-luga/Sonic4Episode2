@@ -189,11 +189,22 @@ files):
 | `0x0C` | `u32` | `0x20` | start of the offset table |
 | `0x10` | `u32` | `0x23C4` | end of offset table / next section |
 | `0x14` | `u32` | `0x23D0` | a further section |
-| `0x20` | `u32[2281]` | ascending, `0x80`-aligned | **file offset table** |
+| `0x20` | `u32[2281]` | ascending, `0x80`-aligned | a per-file table — **not plain byte offsets, see below** |
 
 **The arithmetic self-validates:** `0x20 + 2281 × 4 = 0x23C4`, which is exactly the
-value stored at `+0x10`. So the count and the offset-table extent agree
-independently, which is strong evidence the first three fields are read correctly.
+value stored at `+0x10`. So the count and the table extent agree independently,
+which is strong evidence the first three fields are read correctly.
+
+**Correction (checked against the extracted file).** The `0x20` table was first
+read here as plain byte offsets. That is **wrong**: the values ascend but the last
+is `0xFFF84E80` ≈ 4.29 GB, far past the 583 MB file, so the high bits must carry
+flags or the values are scaled — unresolved. The region at `0x23D0` looks more
+promising as the real per-file record array: it reads as repeating 32-bit groups
+in which two values are frequently *equal* (e.g. `0x3A57, 0x3A57`), the classic
+shape of a (compressed size, uncompressed size) pair where equality means stored.
+And the payload at the first candidate data offset (`0x80080`) is high-entropy, so
+entries are compressed or encrypted rather than raw. **`LPK` remains OPEN**; the
+count and header extent are the only parts confirmed.
 
 Decoding `LPK` is the gateway to what the retail mobile build uniquely answers:
 which texture format SEGA actually shipped for mobile (our open ETC2/ASTC
