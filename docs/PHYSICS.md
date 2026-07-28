@@ -233,6 +233,22 @@ gravity. Springs would have felt weak for an invisible reason. The cut is now
 scoped to rises that came from the jump button, and there is a test asserting a
 bounce cannot be cut.
 
+## Dash panels
+
+The `Speed` objects. A panel sets ground speed to a boost — never slowing a
+faster player — and suspends friction briefly so the boost is not immediately
+eaten.
+
+**The numbers are Episode I's**: 13.5 px/frame and 12 no-friction frames, from
+`GmPlySeqInitDashPanel` (`55296` and `49152` FX32). Episode II contains 13.5 in
+exactly one `f32` and one `f64`, referenced from player-sequence code — which
+corroborates without proving, since the referencing code is curve arithmetic
+rather than a plain speed store. Both values are flagged not-recovered.
+
+Direction follows the player's current travel (facing when at rest) until the
+placement flag mapping is recovered; reverse-facing gotcha panels will visibly
+boost the wrong way rather than subtly.
+
 ## Not yet used
 
 Recovered and sitting in the table unused: `push_max` and the pinball row.

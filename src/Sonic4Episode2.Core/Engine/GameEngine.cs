@@ -92,6 +92,9 @@ public sealed class GameEngine
     /// <summary>The mounted stage's springs.</summary>
     public Springs? Springs { get; private set; }
 
+    /// <summary>The mounted stage's dash panels.</summary>
+    public DashPanels? DashPanels { get; private set; }
+
     public string? StageName { get; private set; }
     public ulong Frame { get; private set; }
 
@@ -196,6 +199,7 @@ public sealed class GameEngine
         RingField = new RingField(rings);
         RingCount = 0;
         Springs = new Springs(placements);
+        DashPanels = new DashPanels(placements);
         StageName = NameOf(actPath);
         int identified = placements.Count(p => ObjectCatalog.IsKnown(p.ObjectId));
         Status = $"{assembler.TilesPlaced} tiles, {batch.VertexCount:N0} vertices, " +
@@ -213,6 +217,8 @@ public sealed class GameEngine
         Scheduler.Create("GM_RING", _ => CollectRings(), PriorityObject,
                          group: SceneGroup);
         Scheduler.Create("GM_SPRING", _ => CheckSprings(), PriorityObject,
+                         group: SceneGroup);
+        Scheduler.Create("GM_DASHPANEL", _ => CheckDashPanels(), PriorityObject,
                          group: SceneGroup);
 
         if (Collision is not null)
@@ -293,6 +299,17 @@ public sealed class GameEngine
         RingField = null;
         RingCount = 0;
         Springs = null;
+        DashPanels = null;
+    }
+
+    /// <summary>Fires a dash panel under the player.</summary>
+    private void CheckDashPanels()
+    {
+        if (DashPanels is null || Player is null) return;
+        float? boost = DashPanels.Check(new System.Numerics.Vector2(
+            Player.Position.X, Player.Position.Y));
+        if (boost is not null)
+            Player.DashBoost(boost.Value, Engine.DashPanels.NoFrictionFrames);
     }
 
     /// <summary>Fires a spring under the player.</summary>

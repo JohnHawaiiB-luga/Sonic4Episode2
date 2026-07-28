@@ -203,6 +203,12 @@ public sealed class Player : GameObject
             Velocity.X = SpeedUp(Velocity.X, InputX * accel, cap);
             FacingLeft = InputX < 0f;
         }
+        else if (_noFrictionFrames > 0)
+        {
+            // A dash panel suspends friction briefly; without this the boost is
+            // eaten before it is felt.
+            _noFrictionFrames--;
+        }
         else
         {
             // Drag only bleeds speed toward zero; it must never push the player
@@ -440,6 +446,26 @@ public sealed class Player : GameObject
     /// it uncurls a rolling player, and it cancels a spin dash wind-up. Episode I
     /// treats sprung flight as its own sequence state for exactly these reasons.
     /// </remarks>
+    /// <summary>
+    /// Sets the player's ground speed to a boost, the way a dash panel does.
+    /// </summary>
+    /// <remarks>
+    /// The boost never slows a faster player — the same asymmetry as
+    /// <see cref="SpeedUp"/> — and it suspends friction for
+    /// <paramref name="noFrictionFrames"/> so the boost is not immediately eaten
+    /// by drag. Direction follows current travel, facing when at rest.
+    /// </remarks>
+    public void DashBoost(float speed, int noFrictionFrames)
+    {
+        float sign = Velocity.X != 0f ? MathF.Sign(Velocity.X) : (FacingLeft ? -1f : 1f);
+        if (MathF.Abs(Velocity.X) < speed) Velocity.X = sign * speed;
+        _noFrictionFrames = noFrictionFrames;
+        Charging = false;
+        DashPower = 0f;
+    }
+
+    private int _noFrictionFrames;
+
     public void Bounce(float upwardVelocity)
     {
         Velocity.Y = upwardVelocity;
