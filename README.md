@@ -138,8 +138,15 @@ pines, snowmen. The small dark objects spaced down the big slope are 71 placed
 `.EV` file gives them. Only objects whose name provably maps to an archive are
 drawn; the rest are absent rather than guessed.*
 
-Still missing: lighting, the game's own 1,843 shaders (parsed, unused), most
-objects, and a character model where that blue sliver is.
+![Mad Gear Zone with animated gimmicks](docs/images/viewer-madgear-animated.png)
+
+*Mad Gear Zone Act 2 — the industrial machinery, with its propeller and burner
+gimmicks placed and **animated**. Each spins from its own model and motion
+archive, posed per frame by composing the animation onto the model's node tree.
+Rigid objects animate today; skinned characters wait on the matrix palette.*
+
+Still missing: lighting, the game's own 1,843 shaders (parsed, unused), and a
+character model where that blue sliver is.
 
 # What the collision actually looks like
 

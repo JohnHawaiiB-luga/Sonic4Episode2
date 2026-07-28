@@ -1,3 +1,4 @@
+using System.Numerics;
 using Sonic4Episode2.Core.Assets;
 
 namespace Sonic4Episode2.Core;
@@ -105,7 +106,23 @@ public sealed class TileMesh
     public required int[] Indices { get; init; }
     public required string?[] TriangleTextures { get; init; }
 
-    public static TileMesh From(NnModel model)
+    public static TileMesh From(NnModel model) => Build(model, worldMatrices: null);
+
+    /// <summary>
+    /// The model's geometry with each mesh set transformed by its node's world
+    /// matrix — a posed frame of a rigid animation.
+    /// </summary>
+    /// <remarks>
+    /// A rigid model's mesh sets each ride one node, so posing it is transforming
+    /// each mesh set's vertices by <paramref name="worldMatrices"/> at the node it
+    /// binds to. The matrices come from <see cref="AnimatedPose.World"/>. This is
+    /// how a jet wall rises and a propeller spins; a skinned model needs the
+    /// matrix palette instead and is not handled here.
+    /// </remarks>
+    public static TileMesh Posed(NnModel model, IReadOnlyList<Matrix4x4> worldMatrices) =>
+        Build(model, worldMatrices);
+
+    private static TileMesh Build(NnModel model, IReadOnlyList<Matrix4x4>? worldMatrices)
     {
         var positions = new List<float>();
         var texCoords = new List<float>();
@@ -128,11 +145,28 @@ public sealed class TileMesh
             var uvBuffer = new float[vertexList.Count * 2];
             bool hasUv = vertexList.ReadTexCoords(uvBuffer);
 
+            // Posed: ride the node's world matrix. Still: re-centre on the bbox,
+            // the behaviour From has always had.
+            bool posed = worldMatrices is not null &&
+                         mesh.NodeIndex >= 0 && mesh.NodeIndex < worldMatrices.Count;
+            Matrix4x4 transform = posed ? worldMatrices![mesh.NodeIndex] : Matrix4x4.Identity;
+
             for (int i = 0; i < vertexList.Count; i++)
             {
-                positions.Add(buffer[i * 3 + 0] - cx);
-                positions.Add(buffer[i * 3 + 1] - cy);
-                positions.Add(buffer[i * 3 + 2] - cz);
+                float x = buffer[i * 3 + 0], y = buffer[i * 3 + 1], z = buffer[i * 3 + 2];
+                if (posed)
+                {
+                    var v = Vector3.Transform(new Vector3(x, y, z), transform);
+                    positions.Add(v.X);
+                    positions.Add(v.Y);
+                    positions.Add(v.Z);
+                }
+                else
+                {
+                    positions.Add(x - cx);
+                    positions.Add(y - cy);
+                    positions.Add(z - cz);
+                }
                 texCoords.Add(hasUv ? uvBuffer[i * 2 + 0] : 0f);
                 texCoords.Add(hasUv ? uvBuffer[i * 2 + 1] : 0f);
             }

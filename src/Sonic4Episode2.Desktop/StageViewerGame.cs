@@ -67,7 +67,8 @@ public sealed class StageViewerGame : Game
     public string? ScreenshotPath { get; set; }
 
     /// <summary>Frames to run before the screenshot is taken.</summary>
-    public int ScreenshotFrame { get; set; } = 30;
+    public int ScreenshotFrame { get; set; } =
+        int.TryParse(Environment.GetEnvironmentVariable("SCREENSHOT_FRAME"), out int f) ? f : 30;
 
     /// <summary>Cell to drop the player into; see <see cref="GameEngine.SpawnCellX"/>.</summary>
     public int? SpawnCellX { get; set; }
@@ -338,6 +339,14 @@ public sealed class StageViewerGame : Game
     /// which is what a first pass should be.
     /// </para>
     /// </remarks>
+    /// <summary>A model and the animation to play on it, loaded once.</summary>
+    private sealed record LoadedObject(
+        NnModel? Model, TileMesh? Rest,
+        IReadOnlyList<MotionSampler> Channels, float Start, float End);
+
+    private readonly List<(LoadedObject Object, float X, float Y)> _objectPlacements = [];
+    private bool _objectsAnimate;
+
     private void LoadObjectModels()
     {
         int cut = _actArchive.IndexOf('/');
@@ -345,9 +354,10 @@ public sealed class StageViewerGame : Game
         string[] roots = [$"{zone}/GMK", "G_COM/GMK"];
         var archives = roots.SelectMany(r => _content.List(r, "_MDL.AMB")).ToArray();
 
-        var meshes = new Dictionary<string, TileMesh?>();
-        var batch = new StageBatch();
+        var loaded = new Dictionary<string, LoadedObject?>();
+        _objectPlacements.Clear();
         _objectInstances = 0;
+        _objectsAnimate = false;
 
         foreach (var placement in _engine.Placements)
         {
@@ -356,18 +366,46 @@ public sealed class StageViewerGame : Game
             string? archive = ObjectModels.Resolve(name, archives);
             if (archive is null) continue;
 
-            if (!meshes.TryGetValue(archive, out var mesh))
+            if (!loaded.TryGetValue(archive, out var obj))
             {
-                mesh = LoadFirstModel(archive);
-                meshes[archive] = mesh;
-                if (mesh is not null)
+                obj = LoadObject(archive);
+                loaded[archive] = obj;
+                if (obj?.Rest is not null)
                     LoadTexturesFrom(ObjectModels.TexturesFor(archive));
             }
-            if (mesh is null) continue;
+            if (obj?.Rest is null) continue;
 
             float scale = PlayerPhysics.WorldPerPixel;
-            batch.Add(mesh, placement.X * scale, -placement.Y * scale, 385f);
+            _objectPlacements.Add((obj, placement.X * scale, -placement.Y * scale));
             _objectInstances++;
+            if (obj.Channels.Count > 0) _objectsAnimate = true;
+        }
+
+        BuildObjectBuffers(0f);
+        Console.WriteLine($"{_objectInstances} object models placed " +
+                          $"({loaded.Count(o => o.Value?.Rest is not null)} distinct, " +
+                          $"{(_objectsAnimate ? "animated" : "static")})");
+    }
+
+    /// <summary>Rebuilds the object geometry at an animation frame.</summary>
+    /// <remarks>
+    /// Rigid models pose by transforming each mesh set by its node's world matrix
+    /// at the frame; models without a motion stay at rest. Called once at load for
+    /// a static act, and every frame for an animated one.
+    /// </remarks>
+    private void BuildObjectBuffers(float frame)
+    {
+        var batch = new StageBatch();
+        foreach (var (obj, x, y) in _objectPlacements)
+        {
+            TileMesh mesh = obj.Rest!;
+            if (obj.Model is not null && obj.Channels.Count > 0)
+            {
+                float f = obj.Start + (frame % MathF.Max(obj.End - obj.Start, 1f));
+                var world = AnimatedPose.World(obj.Model.Nodes, obj.Channels, f);
+                mesh = TileMesh.Posed(obj.Model, world);
+            }
+            batch.Add(mesh, x, y, 385f);
         }
 
         _objectVertices = new VertexPositionNormalTexture[batch.VertexCount];
@@ -380,32 +418,66 @@ public sealed class StageViewerGame : Game
                 Vector3.Backward,
                 new Vector2(batch.TexCoords[i * 2], 1f - batch.TexCoords[i * 2 + 1]));
         }
+        _objectBatches.Clear();
         foreach (var pair in batch.IndicesByTexture)
             _objectBatches[pair.Key] = [.. pair.Value];
-
-        Console.WriteLine($"{_objectInstances} object models placed " +
-                          $"({meshes.Count(m => m.Value is not null)} distinct)");
     }
 
-    /// <summary>The first drawable model in an archive, or null.</summary>
-    private TileMesh? LoadFirstModel(string archivePath)
+    /// <summary>Loads a model and, if there is one beside it, its first motion.</summary>
+    private LoadedObject? LoadObject(string archivePath)
+    {
+        NnModel? model = LoadModel(archivePath);
+        if (model is null) return null;
+        var rest = TileMesh.From(model);
+
+        // Motions live in the _MTN archive under the same stem.
+        string mtnPath = archivePath[..^"_MDL.AMB".Length] + "_MTN.AMB";
+        var channels = new List<MotionSampler>();
+        float start = 0f, end = 1f;
+        if (_content.Exists(mtnPath))
+        {
+            try
+            {
+                var mtn = AmbArchive.Parse(_content.Read(mtnPath));
+                foreach (var entry in mtn.Entries)
+                {
+                    if (!entry.Name.EndsWith(".ZNM", StringComparison.OrdinalIgnoreCase)) continue;
+                    var raw = mtn.Read(entry);
+                    var motion = NnFile.Parse(raw).ReadMotion();
+                    if (motion is null) continue;
+                    var (m, headers) = motion.Value;
+                    foreach (var header in headers)
+                    {
+                        var sampler = MotionSampler.Decode(header, raw.Span);
+                        if (sampler is not null) channels.Add(sampler);
+                    }
+                    start = m.Start;
+                    end = m.End;
+                    break;   // the first motion is the idle/loop for a gimmick
+                }
+            }
+            catch (Exception ex) when (ex is AmbException or NnException) { }
+        }
+        return new LoadedObject(model, rest, channels, start, end);
+    }
+
+    private NnModel? LoadModel(string archivePath)
     {
         try
         {
             var archive = AmbArchive.Parse(_content.Read(archivePath));
             foreach (var entry in archive.Entries)
             {
-                if (!entry.Name.EndsWith(".ZNO", StringComparison.OrdinalIgnoreCase))
-                    continue;
+                if (!entry.Name.EndsWith(".ZNO", StringComparison.OrdinalIgnoreCase)) continue;
                 var model = NnModel.Load(archive.Read(entry));
-                if (model is null || model.MeshSets.Count == 0) continue;
-                return TileMesh.From(model);
+                if (model is not null && model.MeshSets.Count > 0) return model;
             }
         }
         catch (Exception ex) when (ex is AmbException or NnException) { }
         return null;
     }
 
+    /// <summary>The first drawable model in an archive, or null.</summary>
     /// <summary>Uploads every texture in an archive that is not already loaded.</summary>
     private void LoadTexturesFrom(string archivePath)
     {
@@ -588,6 +660,12 @@ public sealed class StageViewerGame : Game
                                ? "" : $" of {_engine.RingField.Count}") +
                            (rolling ? " - rolling" : "");
         }
+
+        // Play the object animations by rebuilding their posed geometry each
+        // frame. Only when something actually animates, so a static act pays
+        // nothing.
+        if (_objectsAnimate)
+            BuildObjectBuffers((float)gameTime.TotalGameTime.TotalSeconds * 30f);
 
         var keyboard = Keyboard.GetState();
         if (keyboard.IsKeyDown(Keys.Escape)) Exit();
