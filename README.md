@@ -4,6 +4,12 @@ Pulling Sonic the Hedgehog 4: Episode II apart and rebuilding it as portable
 source, so it outlives its 2012 Windows build and runs on things that fit in your
 pocket.
 
+![Zone 1 Act 1, whole act](docs/images/collision-zone1act1-wide.png)
+
+*Sylvania Castle Act 1, drawn entirely from data this project decoded: every
+solid surface from the stage's own collision files, with its 325 rings where the
+level designer put them. Nothing here is traced or redrawn.*
+
 # Status
 
 Early, but the foundations are real. Every number below is verified against the
@@ -101,6 +107,42 @@ python tools/stagemap.py tileset G_ZONE1/MAP/ZONE11_MAP.AMB
 python tools/txb.py    list      G_ZONE1/MAP/ZONE1_T.AMB
 python tools/nn.py     export    G_ZONE1/MAP/ZONE1_M.AMB Z1_G_FL_A out/
 python tools/stageview.py        G_ZONE1/MAP/ZONE11_MAP.AMB out/ --layers _B
+```
+
+# What the collision actually looks like
+
+The tile grid says what a level *looks* like. The collision says what it **is**,
+and it took three separate formats to draw a single picture of it — which is a
+fair summary of the whole project.
+
+![Zone 1 Act 1 detail](docs/images/collision-zone1act1.png)
+
+*Slate is solid rock; white is a surface you can stand on; orange is a slope
+steep enough for the stage's own angle data to say so; yellow is a ring. The
+arcs and threes are exactly how they sit in the shipped game.*
+
+Reading that one image needs all of:
+
+| File | What it gave up |
+|------|-----------------|
+| `_ATTR_B.MP` | which cell carries which attribute id |
+| `.DF` | 64 column heights per cell, two pixels per height unit |
+| `.DI` | one surface angle per cell, a full turn per 256 |
+| `.RG` | ring positions — which turned out not to be objects at all |
+
+The `.DF` addressing came out of the executable rather than the data, because the
+file size works out identically whether the records or the index come first. Four
+instructions at `0x00560349` settle it.
+
+![Zone 2 Act 3](docs/images/collision-zone2act3.png)
+
+*Zone 2 Act 3 is a vertical climb, which the data says plainly — 288 rings inside
+a 44-cell-wide column.*
+
+Reproduce any of these with:
+
+```
+python tools/collisionview.py G_ZONE1/MAP/ZONE11_MAP.AMB out.png --cell 4
 ```
 
 # Issues
