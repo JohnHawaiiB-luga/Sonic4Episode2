@@ -97,6 +97,12 @@ public sealed class NnModel
         return name.Length == 0 ? null : name;
     }
 
+    /// <summary>How a mesh set blends, from its material's render state.</summary>
+    public MaterialBlend BlendFor(NnMeshSet mesh) =>
+        mesh.MaterialIndex >= 0 && mesh.MaterialIndex < Materials.Count
+            ? Materials[mesh.MaterialIndex].Blend
+            : MaterialBlend.Alpha;
+
     /// <summary>Total triangles across every mesh set, validating indices as it goes.</summary>
     public int CountTriangles()
     {

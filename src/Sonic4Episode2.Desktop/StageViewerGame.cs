@@ -624,7 +624,9 @@ public sealed class StageViewerGame : Game
 
         foreach (var pair in _skyBatches)
         {
-            _effect.Texture = _textures.TryGetValue(pair.Key.ToUpperInvariant(), out var t)
+            SetBlend(pair.Key);
+            _effect.Texture = _textures.TryGetValue(
+                StageBatch.TextureOf(pair.Key).ToUpperInvariant(), out var t)
                 ? t : _white;
             foreach (var pass in _effect.CurrentTechnique.Passes)
             {
@@ -637,13 +639,36 @@ public sealed class StageViewerGame : Game
         _effect.World = Matrix.Identity;
     }
 
+    /// <summary>
+    /// Sets the blend state for a batch key — additive for glow materials,
+    /// ordinary transparency otherwise.
+    /// </summary>
+    /// <remarks>
+    /// Additive is <c>SRCALPHA / ONE</c>, which is what the material's own render
+    /// state asks for. It is not MonoGame's <c>BlendState.Additive</c>, which is
+    /// <c>ONE / ONE</c> and blows out anything not pre-multiplied.
+    /// </remarks>
+    private static readonly BlendState AdditiveSrcAlpha = new()
+    {
+        ColorSourceBlend = Blend.SourceAlpha,
+        ColorDestinationBlend = Blend.One,
+        AlphaSourceBlend = Blend.SourceAlpha,
+        AlphaDestinationBlend = Blend.One,
+    };
+
+    private void SetBlend(string key) =>
+        GraphicsDevice.BlendState = StageBatch.IsAdditive(key)
+            ? AdditiveSrcAlpha : BlendState.AlphaBlend;
+
     /// <summary>Draws the placed object models.</summary>
     private void DrawObjects()
     {
         if (_objectVertices.Length == 0) return;
         foreach (var pair in _objectBatches)
         {
-            _effect.Texture = _textures.TryGetValue(pair.Key.ToUpperInvariant(), out var t)
+            SetBlend(pair.Key);
+            _effect.Texture = _textures.TryGetValue(
+                StageBatch.TextureOf(pair.Key).ToUpperInvariant(), out var t)
                 ? t : _white;
             foreach (var pass in _effect.CurrentTechnique.Passes)
             {
@@ -891,7 +916,9 @@ public sealed class StageViewerGame : Game
         const int chunk = 60000 * 3;
         foreach (var pair in _batches)
         {
-            _effect.Texture = _textures.TryGetValue(pair.Key.ToUpperInvariant(), out var texture)
+            SetBlend(pair.Key);
+            _effect.Texture = _textures.TryGetValue(
+                StageBatch.TextureOf(pair.Key).ToUpperInvariant(), out var texture)
                 ? texture
                 : _white;
 

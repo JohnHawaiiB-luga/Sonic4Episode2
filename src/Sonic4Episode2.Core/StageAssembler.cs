@@ -105,6 +105,7 @@ public sealed class TileMesh
     public required float[] TexCoords { get; init; }      // uv pairs
     public required int[] Indices { get; init; }
     public required string?[] TriangleTextures { get; init; }
+    public required MaterialBlend[] TriangleBlends { get; init; }
 
     public static TileMesh From(NnModel model) => Build(model, worldMatrices: null);
 
@@ -128,6 +129,7 @@ public sealed class TileMesh
         var texCoords = new List<float>();
         var indices = new List<int>();
         var textures = new List<string?>();
+        var blends = new List<MaterialBlend>();
 
         float cx = model.Header.CenterX, cy = model.Header.CenterY, cz = model.Header.CenterZ;
 
@@ -172,6 +174,7 @@ public sealed class TileMesh
             }
 
             string? texture = model.TextureFor(mesh);
+            MaterialBlend blend = model.BlendFor(mesh);
             foreach (var (a, b, c) in model.PrimitiveLists[mesh.PrimitiveListIndex].Triangles())
             {
                 if (a >= vertexList.Count || b >= vertexList.Count || c >= vertexList.Count) continue;
@@ -179,6 +182,7 @@ public sealed class TileMesh
                 indices.Add(baseIndex + b);
                 indices.Add(baseIndex + c);
                 textures.Add(texture);
+                blends.Add(blend);
             }
         }
 
@@ -188,6 +192,7 @@ public sealed class TileMesh
             TexCoords = [.. texCoords],
             Indices = [.. indices],
             TriangleTextures = [.. textures],
+            TriangleBlends = [.. blends],
         };
     }
 }
@@ -204,8 +209,25 @@ public sealed class StageBatch
     public List<float> TexCoords { get; } = [];
     public List<int> Indices { get; } = [];
 
-    /// <summary>Index ranges keyed by texture name; the empty key is untextured.</summary>
+    /// <summary>
+    /// Index ranges keyed by texture, with additive materials under a key
+    /// prefixed <c>+</c>.
+    /// </summary>
+    /// <remarks>
+    /// The prefix keeps the additive triangles in their own draw group so the
+    /// renderer can switch to an additive blend state for them — that is what
+    /// makes godrays and shine glow rather than sit flat.
+    /// </remarks>
     public Dictionary<string, List<int>> IndicesByTexture { get; } = [];
+
+    /// <summary>The additive-blend prefix on a batch key.</summary>
+    public const char AdditivePrefix = '+';
+
+    /// <summary>Whether a batch key names an additive-blend group.</summary>
+    public static bool IsAdditive(string key) => key.Length > 0 && key[0] == AdditivePrefix;
+
+    /// <summary>The texture name of a batch key, without the blend prefix.</summary>
+    public static string TextureOf(string key) => IsAdditive(key) ? key[1..] : key;
 
     public float MinX { get; private set; } = float.MaxValue;
     public float MaxX { get; private set; } = float.MinValue;
@@ -237,6 +259,8 @@ public sealed class StageBatch
         for (int t = 0; t < mesh.TriangleTextures.Length; t++)
         {
             string key = mesh.TriangleTextures[t] ?? "";
+            if (t < mesh.TriangleBlends.Length && mesh.TriangleBlends[t] == MaterialBlend.Additive)
+                key = AdditivePrefix + key;
             if (!IndicesByTexture.TryGetValue(key, out var list))
                 IndicesByTexture[key] = list = [];
             for (int k = 0; k < 3; k++)

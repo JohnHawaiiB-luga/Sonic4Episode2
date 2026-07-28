@@ -564,6 +564,26 @@ What is known about the target: **99 palette entries on Sonic across 18 mesh
 sets**, so roughly 5-6 each, entries are node indices in `0..108`, and vertex
 indices never exceed 15, which caps any single palette at 16.
 
+## Material render state and blend mode
+
+A material's <c>StateOffset</c> points at a **16-word render-state block**. Words
+2 and 3 are the D3D9 **source and destination blend factors**, and they split the
+corpus cleanly:
+
+| Src, Dst | D3D factors | Meaning | Materials |
+|----------|-------------|---------|----------:|
+| 5, 6 | `SRCALPHA / INVSRCALPHA` | ordinary transparency | 7,683 |
+| 5, 2 | `SRCALPHA / ONE` | **additive glow** | 2,761 |
+
+So **2,761 materials are additive** — godrays, shine, sparks, effect planes — and
+were being drawn as flat alpha before this. `NnMaterial.Blend` decodes it and
+`NnModel.BlendFor` exposes it per mesh set. Verified on the Zone 1 far background:
+`Z1_GODRAY` reads additive where `Z1_SKY` reads alpha.
+
+The additive blend the game asks for is `SRCALPHA / ONE`, not MonoGame's
+`BlendState.Additive` (`ONE / ONE`), which would blow out anything not
+pre-multiplied.
+
 ## Still open
 
 - **The render-state block's contents.** The material's texture binding is

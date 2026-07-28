@@ -408,11 +408,29 @@ public sealed class NnMaterial
     /// <summary>Index into the model's texture list, or null when untextured.</summary>
     public int? TextureIndex { get; init; }
 
+    /// <summary>How this material blends over what is already drawn.</summary>
+    public MaterialBlend Blend { get; init; }
+
     public static NnMaterial Parse(ReadOnlySpan<byte> data, int offset,
                                    uint pointerFlags, HashSet<int> relocations)
     {
         int at = NnFile.DataBase + offset;
         int? texture = null;
+
+        // The render-state block is 16 u16s; words 2 and 3 are the D3D9 source
+        // and destination blend factors. SRCALPHA/INVSRCALPHA (5,6) is ordinary
+        // transparency; SRCALPHA/ONE (5,2) is additive, the glow blend 2,761
+        // materials use. Read straight from the block at StateOffset.
+        var blend = MaterialBlend.Alpha;
+        int stateOffset = BinaryPrimitives.ReadInt32LittleEndian(data[(at + 12)..]);
+        if (stateOffset > 0 && NnFile.DataBase + stateOffset + 8 <= data.Length)
+        {
+            int sb = NnFile.DataBase + stateOffset;
+            int src = BinaryPrimitives.ReadUInt16LittleEndian(data[(sb + 4)..]);
+            int dst = BinaryPrimitives.ReadUInt16LittleEndian(data[(sb + 6)..]);
+            blend = (D3dBlend)dst == D3dBlend.One ? MaterialBlend.Additive
+                  : MaterialBlend.Alpha;
+        }
 
         if (relocations.Contains(offset + 0x18))
         {
@@ -429,8 +447,27 @@ public sealed class NnMaterial
             ColourOffset = BinaryPrimitives.ReadInt32LittleEndian(data[(at + 8)..]),
             StateOffset = BinaryPrimitives.ReadInt32LittleEndian(data[(at + 12)..]),
             TextureIndex = texture,
+            Blend = blend,
         };
     }
+}
+
+/// <summary>How a material combines with what is already on screen.</summary>
+public enum MaterialBlend
+{
+    /// <summary>Ordinary transparency — <c>SRCALPHA / INVSRCALPHA</c>.</summary>
+    Alpha,
+
+    /// <summary>Additive glow — <c>SRCALPHA / ONE</c>; godrays, shine, effects.</summary>
+    Additive,
+}
+
+/// <summary>The D3D9 blend-factor values a material's state block stores.</summary>
+internal enum D3dBlend
+{
+    One = 2,
+    SrcAlpha = 5,
+    InvSrcAlpha = 6,
 }
 
 /// <summary>An <c>NZMO</c> animation header.</summary>
