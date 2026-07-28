@@ -8,7 +8,7 @@ namespace Sonic4Episode2.Tests;
 public class SpringTests
 {
     private static int SpringId { get; } =
-        ObjectCatalog.All.First(e => e.Name == "Spring").Id;
+        ObjectCatalog.IdsOfClass("Spring").First();
 
     private static Springs Field(params (int X, int Y)[] at) =>
         new(at.Select(p => new Placement(p.X, p.Y, SpringId, 0, 0)).ToList());

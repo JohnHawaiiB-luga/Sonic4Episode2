@@ -42,7 +42,7 @@ public sealed class Springs
     public Springs(IReadOnlyList<Placement> placements)
     {
         _positions = placements
-            .Where(p => ObjectCatalog.NameOf(p.ObjectId) == "Spring")
+            .Where(p => ObjectCatalog.Is(p.ObjectId, "Spring"))
             .Select(p => new Vector2(p.X * PlayerPhysics.WorldPerPixel,
                                      -p.Y * PlayerPhysics.WorldPerPixel))
             .ToArray();

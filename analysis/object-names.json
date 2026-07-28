@@ -1,0 +1,2725 @@
+{
+ "source": "arm64-v8a/libfox.so dispatch table",
+ "anchored_on": {
+  "443": "GmGmkStartInit",
+  "520": "GmGmkGoalPanelInit"
+ },
+ "ids": {
+  "0": {
+   "class": "GmEneHariSenboInit",
+   "name": "HariSenbo"
+  },
+  "1": {
+   "class": "GmEneMotoraInit",
+   "name": "Motora"
+  },
+  "2": {
+   "class": "GmEneStingInit",
+   "name": "Sting"
+  },
+  "3": {
+   "class": "GmEneGabuInit",
+   "name": "Gabu"
+  },
+  "4": {
+   "class": "GmEneMereonInit",
+   "name": "Mereon"
+  },
+  "5": {
+   "class": "GmEneMereonInit",
+   "name": "Mereon"
+  },
+  "6": {
+   "class": "GmEneMoguInit",
+   "name": "Mogu"
+  },
+  "7": {
+   "class": "GmEneGardonInit",
+   "name": "Gardon"
+  },
+  "8": {
+   "class": "GmEneTStarInit",
+   "name": "TStar"
+  },
+  "9": {
+   "class": "GmEneKaniInit",
+   "name": "Kani"
+  },
+  "10": {
+   "class": "GmEneHaroInit",
+   "name": "Haro"
+  },
+  "11": {
+   "class": "GmEneUnidesInit",
+   "name": "Unides"
+  },
+  "12": {
+   "class": "GmEneUniuniInit",
+   "name": "Uniuni"
+  },
+  "13": {
+   "class": "GmEneBukuInit",
+   "name": "Buku"
+  },
+  "14": {
+   "class": "GmEneKamaInit",
+   "name": "Kama"
+  },
+  "15": {
+   "class": "GmEneHariSenboInit",
+   "name": "HariSenbo"
+  },
+  "60": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "61": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "62": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "63": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "64": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "65": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "66": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "67": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "70": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "71": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "72": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "73": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "74": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "75": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "76": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "77": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "78": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "79": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "80": {
+   "class": "GmGmkStartInit",
+   "name": "Start"
+  },
+  "81": {
+   "class": "GmGmkLandInit",
+   "name": "Land"
+  },
+  "82": {
+   "class": "GmGmkLandInit",
+   "name": "Land"
+  },
+  "83": {
+   "class": "GmGmkLandInit",
+   "name": "Land"
+  },
+  "84": {
+   "class": "GmGmkNeedleInit",
+   "name": "Needle"
+  },
+  "85": {
+   "class": "GmGmkNeedleInit",
+   "name": "Needle"
+  },
+  "86": {
+   "class": "GmGmkNeedleInit",
+   "name": "Needle"
+  },
+  "87": {
+   "class": "GmGmkNeedleInit",
+   "name": "Needle"
+  },
+  "88": {
+   "class": "GmGmkActNeedleInit",
+   "name": "ActNeedle"
+  },
+  "89": {
+   "class": "GmGmkActNeedleInit",
+   "name": "ActNeedle"
+  },
+  "90": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "91": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "92": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "93": {
+   "class": "GmGmkDashPanelInit",
+   "name": "DashPanel"
+  },
+  "94": {
+   "class": "GmGmkDashPanelInit",
+   "name": "DashPanel"
+  },
+  "95": {
+   "class": "GmGmkDashPanelInit",
+   "name": "DashPanel"
+  },
+  "96": {
+   "class": "GmGmkDashPanelInit",
+   "name": "DashPanel"
+  },
+  "97": {
+   "class": "GmGmkGoalPanelInit",
+   "name": "GoalPanel"
+  },
+  "98": {
+   "class": "GmGmkLandInit",
+   "name": "Land"
+  },
+  "99": {
+   "class": "GmGmkPointMarkerInit",
+   "name": "PointMarker"
+  },
+  "100": {
+   "class": "GmGmkBreakObjInit",
+   "name": "BreakObj"
+  },
+  "101": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "102": {
+   "class": "GmGmkCamScrLimitInit",
+   "name": "CamScrLimit"
+  },
+  "103": {
+   "class": "GmGmkBreakWall_L1Init",
+   "name": "BreakWall_L1"
+  },
+  "104": {
+   "class": "GmGmkBreakWall_L2Init",
+   "name": "BreakWall_L2"
+  },
+  "105": {
+   "class": "GmGmkBreakWall_R1Init",
+   "name": "BreakWall_R1"
+  },
+  "106": {
+   "class": "GmGmkBreakWall_R2Init",
+   "name": "BreakWall_R2"
+  },
+  "107": {
+   "class": "GmGmkBreakWall_C1Init",
+   "name": "BreakWall_C1"
+  },
+  "108": {
+   "class": "GmGmkBreakWall_C2Init",
+   "name": "BreakWall_C2"
+  },
+  "109": {
+   "class": "GmGmkBreakFloorInit",
+   "name": "BreakFloor"
+  },
+  "110": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "111": {
+   "class": "GmGmkCapsuleInit",
+   "name": "Capsule"
+  },
+  "112": {
+   "class": "GmGmkCamScrLimitReleaseInit",
+   "name": "CamScrLimitRelease"
+  },
+  "113": {
+   "class": "GmGmkBreakWall_C1_H_Init",
+   "name": "BreakWall_C1_H_"
+  },
+  "114": {
+   "class": "GmGmkRockChaseManagerInit",
+   "name": "RockChaseManager"
+  },
+  "115": {
+   "class": "GmGmkRockFallManagerInit",
+   "name": "RockFallManager"
+  },
+  "116": {
+   "class": "GmGmkPulleyBaseInit",
+   "name": "PulleyBase"
+  },
+  "117": {
+   "class": "GmGmkPulleyPoleLInit",
+   "name": "PulleyPoleL"
+  },
+  "118": {
+   "class": "GmGmkPulleyPoleRInit",
+   "name": "PulleyPoleR"
+  },
+  "119": {
+   "class": "GmGmkPulleyRopeFInit",
+   "name": "PulleyRopeF"
+  },
+  "120": {
+   "class": "GmGmkPulleyRopeTInit",
+   "name": "PulleyRopeT"
+  },
+  "121": {
+   "class": "GmGmkPulleyRopeTInit",
+   "name": "PulleyRopeT"
+  },
+  "122": {
+   "class": "GmGmkRockRideInit",
+   "name": "RockRide"
+  },
+  "123": {
+   "class": "GmGmkWaterAreaInit",
+   "name": "WaterArea"
+  },
+  "124": {
+   "class": "GmGmkWaterAreaInit",
+   "name": "WaterArea"
+  },
+  "125": {
+   "class": "GmGmkWaterAreaInit",
+   "name": "WaterArea"
+  },
+  "126": {
+   "class": "GmGmkWaterAreaInit",
+   "name": "WaterArea"
+  },
+  "127": {
+   "class": "GmGmkWaterAreaInit",
+   "name": "WaterArea"
+  },
+  "128": {
+   "class": "GmGmkBubbleManagerInit",
+   "name": "BubbleManager"
+  },
+  "129": {
+   "class": "GmGmkTarzanRopeInit",
+   "name": "TarzanRope"
+  },
+  "130": {
+   "class": "GmGmkTarzanRopeInit",
+   "name": "TarzanRope"
+  },
+  "131": {
+   "class": "GmGmkTarzanRopeInit",
+   "name": "TarzanRope"
+  },
+  "132": {
+   "class": "GmGmkWaterSliderInit",
+   "name": "WaterSlider"
+  },
+  "133": {
+   "class": "GmGmkWaterSliderInit",
+   "name": "WaterSlider"
+  },
+  "134": {
+   "class": "GmGmkWaterSliderInit",
+   "name": "WaterSlider"
+  },
+  "135": {
+   "class": "GmGmkWaterSliderInit",
+   "name": "WaterSlider"
+  },
+  "136": {
+   "class": "GmGmkWaterSliderInit",
+   "name": "WaterSlider"
+  },
+  "137": {
+   "class": "GmGmkWaterSliderInit",
+   "name": "WaterSlider"
+  },
+  "138": {
+   "class": "GmGmkWaterSliderInit",
+   "name": "WaterSlider"
+  },
+  "139": {
+   "class": "GmGmkWaterSliderInit",
+   "name": "WaterSlider"
+  },
+  "140": {
+   "class": "GmGmkBreakLandRInit",
+   "name": "BreakLandR"
+  },
+  "141": {
+   "class": "GmGmkBreakLandLInit",
+   "name": "BreakLandL"
+  },
+  "142": {
+   "class": "GmGmkPistonUpInit",
+   "name": "PistonUp"
+  },
+  "143": {
+   "class": "GmGmkPistonDownInit",
+   "name": "PistonDown"
+  },
+  "144": {
+   "class": "GmGmkBeltConveyorInit",
+   "name": "BeltConveyor"
+  },
+  "145": {
+   "class": "GmGmkSpipeInit",
+   "name": "Spipe"
+  },
+  "146": {
+   "class": "GmGmkStopperNormInit",
+   "name": "StopperNorm"
+  },
+  "147": {
+   "class": "GmGmkStopperSlotInit",
+   "name": "StopperSlot"
+  },
+  "148": {
+   "class": "GmGmkUpBumperLInit",
+   "name": "UpBumperL"
+  },
+  "149": {
+   "class": "GmGmkUpBumperRInit",
+   "name": "UpBumperR"
+  },
+  "150": {
+   "class": "GmGmkBumperInit",
+   "name": "Bumper"
+  },
+  "151": {
+   "class": "GmGmkBumperInit",
+   "name": "Bumper"
+  },
+  "152": {
+   "class": "GmGmkBumperInit",
+   "name": "Bumper"
+  },
+  "153": {
+   "class": "GmGmkBumperInit",
+   "name": "Bumper"
+  },
+  "154": {
+   "class": "GmGmkBumperInit",
+   "name": "Bumper"
+  },
+  "155": {
+   "class": "GmGmkBumperInit",
+   "name": "Bumper"
+  },
+  "156": {
+   "class": "GmGmkBumperInit",
+   "name": "Bumper"
+  },
+  "157": {
+   "class": "GmGmkBumperInit",
+   "name": "Bumper"
+  },
+  "158": {
+   "class": "GmGmkBumperInit",
+   "name": "Bumper"
+  },
+  "159": {
+   "class": "GmGmkBumperInit",
+   "name": "Bumper"
+  },
+  "160": {
+   "class": "GmGmkSpearUInit",
+   "name": "SpearU"
+  },
+  "161": {
+   "class": "GmGmkSpearDInit",
+   "name": "SpearD"
+  },
+  "162": {
+   "class": "GmGmkSpearLInit",
+   "name": "SpearL"
+  },
+  "163": {
+   "class": "GmGmkSpearRInit",
+   "name": "SpearR"
+  },
+  "164": {
+   "class": "GmGmkScrewInit",
+   "name": "Screw"
+  },
+  "165": {
+   "class": "GmGmkCannonInit",
+   "name": "Cannon"
+  },
+  "166": {
+   "class": "GmGmkEnBmprInit",
+   "name": "EnBmpr"
+  },
+  "167": {
+   "class": "GmGmkEnBmprInit",
+   "name": "EnBmpr"
+  },
+  "168": {
+   "class": "GmGmkEnBmprInit",
+   "name": "EnBmpr"
+  },
+  "169": {
+   "class": "GmGmkEnBmprInit",
+   "name": "EnBmpr"
+  },
+  "170": {
+   "class": "GmGmkBobbinInit",
+   "name": "Bobbin"
+  },
+  "171": {
+   "class": "GmGmkFlipperInit",
+   "name": "Flipper"
+  },
+  "172": {
+   "class": "GmGmkFlipperInit",
+   "name": "Flipper"
+  },
+  "173": {
+   "class": "GmGmkFlipperInit",
+   "name": "Flipper"
+  },
+  "174": {
+   "class": "GmGmkSlotInit",
+   "name": "Slot"
+  },
+  "175": {
+   "class": "GmGmkSeesaw0Init",
+   "name": "Seesaw0"
+  },
+  "176": {
+   "class": "GmGmkSeesaw30Init",
+   "name": "Seesaw30"
+  },
+  "177": {
+   "class": "GmGmkSeesaw330Init",
+   "name": "Seesaw330"
+  },
+  "178": {
+   "class": "GmGmkBridgeInit",
+   "name": "Bridge"
+  },
+  "179": {
+   "class": "GmGmkSpCtplt0Init",
+   "name": "SpCtplt0"
+  },
+  "180": {
+   "class": "GmGmkSpCtplt45Init",
+   "name": "SpCtplt45"
+  },
+  "181": {
+   "class": "GmGmkSpCtplt315Init",
+   "name": "SpCtplt315"
+  },
+  "182": {
+   "class": "GmGmkGearInit",
+   "name": "Gear"
+  },
+  "183": {
+   "class": "GmGmkGearInit",
+   "name": "Gear"
+  },
+  "184": {
+   "class": "GmGmkGearMoveEndInit",
+   "name": "GearMoveEnd"
+  },
+  "185": {
+   "class": "GmGmkGearInit",
+   "name": "Gear"
+  },
+  "186": {
+   "class": "GmGmkForceSpinSetInit",
+   "name": "ForceSpinSet"
+  },
+  "187": {
+   "class": "GmGmkForceSpinResetInit",
+   "name": "ForceSpinReset"
+  },
+  "190": {
+   "class": "GmGmkPressWallInit",
+   "name": "PressWall"
+  },
+  "191": {
+   "class": "GmGmkPressWallStopInit",
+   "name": "PressWallStop"
+  },
+  "192": {
+   "class": "GmGmkPressWallControlerInit",
+   "name": "PressWallControler"
+  },
+  "193": {
+   "class": "GmGmkSsSquareInit",
+   "name": "SsSquare"
+  },
+  "194": {
+   "class": "GmGmkSsCircleInit",
+   "name": "SsCircle"
+  },
+  "195": {
+   "class": "GmGmkSsCircleInit",
+   "name": "SsCircle"
+  },
+  "196": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "197": {
+   "class": "GmGmkSsEnduranceInit",
+   "name": "SsEndurance"
+  },
+  "198": {
+   "class": "GmGmkSsGoalInit",
+   "name": "SsGoal"
+  },
+  "199": {
+   "class": "GmGmkSsEmeraldInit",
+   "name": "SsEmerald"
+  },
+  "200": {
+   "class": "GmGmkSsTimeInit",
+   "name": "SsTime"
+  },
+  "201": {
+   "class": "GmGmkSsRingGateInit",
+   "name": "SsRingGate"
+  },
+  "202": {
+   "class": "GmGmkSteamPipeGateRInit",
+   "name": "SteamPipeGateR"
+  },
+  "203": {
+   "class": "GmGmkSteamPipeGateLInit",
+   "name": "SteamPipeGateL"
+  },
+  "204": {
+   "class": "GmGmkSteamPipeA1Init",
+   "name": "SteamPipeA1"
+  },
+  "205": {
+   "class": "GmGmkSteamPipeA2Init",
+   "name": "SteamPipeA2"
+  },
+  "206": {
+   "class": "GmGmkSteamPipeA3Init",
+   "name": "SteamPipeA3"
+  },
+  "207": {
+   "class": "GmGmkSteamPipeA4Init",
+   "name": "SteamPipeA4"
+  },
+  "208": {
+   "class": "GmGmkSteamPipeB1Init",
+   "name": "SteamPipeB1"
+  },
+  "209": {
+   "class": "GmGmkSteamPipeB2Init",
+   "name": "SteamPipeB2"
+  },
+  "210": {
+   "class": "GmGmkSteamPipeB3Init",
+   "name": "SteamPipeB3"
+  },
+  "211": {
+   "class": "GmGmkSteamPipeB4Init",
+   "name": "SteamPipeB4"
+  },
+  "212": {
+   "class": "GmGmkSteamPipeJ1Init",
+   "name": "SteamPipeJ1"
+  },
+  "213": {
+   "class": "GmGmkSteamPipeJ2Init",
+   "name": "SteamPipeJ2"
+  },
+  "214": {
+   "class": "GmGmkSteamPipeJ3Init",
+   "name": "SteamPipeJ3"
+  },
+  "215": {
+   "class": "GmGmkSteamPipeJ4Init",
+   "name": "SteamPipeJ4"
+  },
+  "216": {
+   "class": "GmGmkSteamPipeGateEInit",
+   "name": "SteamPipeGateE"
+  },
+  "217": {
+   "class": "GmGmkDrainTankInitIn",
+   "name": "DrainTankInitIn"
+  },
+  "218": {
+   "class": "GmGmkDrainTankInitOut",
+   "name": "DrainTankInitOut"
+  },
+  "219": {
+   "class": "GmGmkPopSteamUInit",
+   "name": "PopSteamU"
+  },
+  "220": {
+   "class": "GmGmkPopSteamRInit",
+   "name": "PopSteamR"
+  },
+  "221": {
+   "class": "GmGmkPopSteamDInit",
+   "name": "PopSteamD"
+  },
+  "222": {
+   "class": "GmGmkPopSteamLInit",
+   "name": "PopSteamL"
+  },
+  "223": {
+   "class": "GmGmkTruckInit",
+   "name": "Truck"
+  },
+  "224": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "225": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "226": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "227": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "228": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "229": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "230": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "231": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "232": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "233": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "234": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "235": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "236": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "237": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "238": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "239": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "240": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "241": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "242": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "243": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "244": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "245": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "246": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "247": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "248": {
+   "class": "GmGmkSwitchInit",
+   "name": "Switch"
+  },
+  "249": {
+   "class": "GmGmkSwWallInit",
+   "name": "SwWall"
+  },
+  "250": {
+   "class": "GmGmkSwWallInit",
+   "name": "SwWall"
+  },
+  "251": {
+   "class": "GmGmkSwWallInit",
+   "name": "SwWall"
+  },
+  "252": {
+   "class": "GmGmkSwWallInit",
+   "name": "SwWall"
+  },
+  "253": {
+   "class": "GmGmkSwWallInit",
+   "name": "SwWall"
+  },
+  "254": {
+   "class": "GmGmkSwWallInit",
+   "name": "SwWall"
+  },
+  "255": {
+   "class": "GmGmkSwWallInit",
+   "name": "SwWall"
+  },
+  "256": {
+   "class": "GmGmkSwWallInit",
+   "name": "SwWall"
+  },
+  "257": {
+   "class": "GmGmkSwWallInit",
+   "name": "SwWall"
+  },
+  "258": {
+   "class": "GmGmkSwWallInit",
+   "name": "SwWall"
+  },
+  "259": {
+   "class": "GmGmkSwWallInit",
+   "name": "SwWall"
+  },
+  "260": {
+   "class": "GmGmkSwWallInit",
+   "name": "SwWall"
+  },
+  "261": {
+   "class": "GmGmkLoopInit",
+   "name": "Loop"
+  },
+  "262": {
+   "class": "GmGmkShutterInInit",
+   "name": "ShutterIn"
+  },
+  "263": {
+   "class": "GmGmkShutterOutInit",
+   "name": "ShutterOut"
+  },
+  "264": {
+   "class": "GmGmkNeedleNeonInitStand",
+   "name": "NeedleNeonInitStand"
+  },
+  "265": {
+   "class": "GmGmkTruckNoLandingInit",
+   "name": "TruckNoLanding"
+  },
+  "266": {
+   "class": "GmGmkTruckNoLandingInit",
+   "name": "TruckNoLanding"
+  },
+  "267": {
+   "class": "GmGmkTruckNoLandingInit",
+   "name": "TruckNoLanding"
+  },
+  "268": {
+   "class": "GmGmkTruckNoLandingInit",
+   "name": "TruckNoLanding"
+  },
+  "269": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "270": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "271": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "272": {
+   "class": "GmGmkTruckGravityInit",
+   "name": "TruckGravity"
+  },
+  "273": {
+   "class": "GmGmkZ3LandPulleyInit",
+   "name": "Z3LandPulley"
+  },
+  "274": {
+   "class": "GmGmkZ3LandRopeInit",
+   "name": "Z3LandRope"
+  },
+  "275": {
+   "class": "GmGmkZ3LandRopeInit",
+   "name": "Z3LandRope"
+  },
+  "276": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "277": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "278": {
+   "class": "GmGmkBoss3RouteInit",
+   "name": "Boss3Route"
+  },
+  "280": {
+   "class": "GmGmkEndingAnimalInit",
+   "name": "EndingAnimal"
+  },
+  "281": {
+   "class": "GmGmkBoss5TriggerInit",
+   "name": "Boss5Trigger"
+  },
+  "282": {
+   "class": "GmGmkBoss5LandPlaceInit",
+   "name": "Boss5LandPlace"
+  },
+  "283": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "284": {
+   "class": "GmGmkPressPillarInit",
+   "name": "PressPillar"
+  },
+  "285": {
+   "class": "GmGmkPressPillarInit",
+   "name": "PressPillar"
+  },
+  "286": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "287": {
+   "class": "GmGmkDSignInit",
+   "name": "DSign"
+  },
+  "288": {
+   "class": "GmGmkDSignInit",
+   "name": "DSign"
+  },
+  "289": {
+   "class": "GmGmkDSignInit",
+   "name": "DSign"
+  },
+  "290": {
+   "class": "GmGmkDSignInit",
+   "name": "DSign"
+  },
+  "291": {
+   "class": "GmGmkSsArrowInit",
+   "name": "SsArrow"
+  },
+  "292": {
+   "class": "GmGmkSsOblongInit",
+   "name": "SsOblong"
+  },
+  "293": {
+   "class": "GmGmkDecoFrameMgrInit",
+   "name": "DecoFrameMgr"
+  },
+  "294": {
+   "class": "GmGmkDecoFrameMgrInit",
+   "name": "DecoFrameMgr"
+  },
+  "295": {
+   "class": "GmGmkTrumpRoadInit",
+   "name": "TrumpRoad"
+  },
+  "296": {
+   "class": "GmGmkTorchInit",
+   "name": "Torch"
+  },
+  "297": {
+   "class": "GmGmkCandleInit",
+   "name": "Candle"
+  },
+  "298": {
+   "class": "GmGmkTruckBufferInit",
+   "name": "TruckBuffer"
+  },
+  "299": {
+   "class": "GmGmkTruckBufferAirAreaInit",
+   "name": "TruckBufferAirArea"
+  },
+  "300": {
+   "class": "GmGmkCandleOffInit",
+   "name": "CandleOff"
+  },
+  "301": {
+   "class": "GmGmkCandleOffInit",
+   "name": "CandleOff"
+  },
+  "302": {
+   "class": "GmGmkTrumpTurn4x4Init",
+   "name": "TrumpTurn4x4"
+  },
+  "303": {
+   "class": "GmGmkTrumpTurn1x4Init",
+   "name": "TrumpTurn1x4"
+  },
+  "304": {
+   "class": "GmGmkTrumpTurn4x1Init",
+   "name": "TrumpTurn4x1"
+  },
+  "305": {
+   "class": "GmGmkDynamiteInit",
+   "name": "Dynamite"
+  },
+  "306": {
+   "class": "GmGmkDynamiteInit",
+   "name": "Dynamite"
+  },
+  "307": {
+   "class": "GmGmkDynaWallInit",
+   "name": "DynaWall"
+  },
+  "308": {
+   "class": "GmGmkTrumpStageInit",
+   "name": "TrumpStage"
+  },
+  "309": {
+   "class": "GmGmkTrumpStageInit",
+   "name": "TrumpStage"
+  },
+  "310": {
+   "class": "GmGmkTrumpStageInit",
+   "name": "TrumpStage"
+  },
+  "311": {
+   "class": "GmGmkTrumpStageInit",
+   "name": "TrumpStage"
+  },
+  "312": {
+   "class": "GmGmkLightMaskInit",
+   "name": "LightMask"
+  },
+  "313": {
+   "class": "GmGmkCandleOffInit",
+   "name": "CandleOff"
+  },
+  "314": {
+   "class": "GmGmkTrumpStageInit",
+   "name": "TrumpStage"
+  },
+  "315": {
+   "class": "GmGmkTrumpStageInit",
+   "name": "TrumpStage"
+  },
+  "316": {
+   "class": "GmGmkTrumpStageInit",
+   "name": "TrumpStage"
+  },
+  "317": {
+   "class": "GmGmkTrumpStageInit",
+   "name": "TrumpStage"
+  },
+  "318": {
+   "class": "GmGmkDynamiteInit",
+   "name": "Dynamite"
+  },
+  "319": {
+   "class": "GmGmkDynamiteInit",
+   "name": "Dynamite"
+  },
+  "320": {
+   "class": "GmGmkDynaWallInit",
+   "name": "DynaWall"
+  },
+  "330": {
+   "class": "GmEneTStarNeedleInit",
+   "name": "TStarNeedle"
+  },
+  "331": {
+   "class": "GmEneUnidesNeedleInit",
+   "name": "UnidesNeedle"
+  },
+  "332": {
+   "class": "GmEneUniuniNeedleInit",
+   "name": "UniuniNeedle"
+  },
+  "333": {
+   "class": "GmEneKamaLeftHandInit",
+   "name": "KamaLeftHand"
+  },
+  "334": {
+   "class": "GmEneKamaRightHandInit",
+   "name": "KamaRightHand"
+  },
+  "357": {
+   "class": "GmGmkBackNeedleInit",
+   "name": "BackNeedle"
+  },
+  "358": {
+   "class": "GmGmkStandNeedleInit",
+   "name": "StandNeedle"
+  },
+  "359": {
+   "class": "GmGmkNeedleNeonInitNeedle",
+   "name": "NeedleNeonInitNeedle"
+  },
+  "360": {
+   "class": "GmGmkNeedleNeonInitGlaer",
+   "name": "NeedleNeonInitGlaer"
+  },
+  "368": {
+   "class": "GmGmkAlarmInit",
+   "name": "Alarm"
+  },
+  "369": {
+   "class": "GmGmkTrumpTurnCardInit",
+   "name": "TrumpTurnCard"
+  },
+  "370": {
+   "class": "GmGmkTrumpRoadSpreadInit",
+   "name": "TrumpRoadSpread"
+  },
+  "371": {
+   "class": "GmGmkRockFallInit",
+   "name": "RockFall"
+  },
+  "372": {
+   "class": "GmGmkCapsuleBodyInit",
+   "name": "CapsuleBody"
+  },
+  "373": {
+   "class": "GmGmkCamScrLimitInit",
+   "name": "CamScrLimit"
+  },
+  "374": {
+   "class": "GmGmkCamScrLimitReleaseInit",
+   "name": "CamScrLimitRelease"
+  },
+  "375": {
+   "class": "GmGmkSplRingInit",
+   "name": "SplRing"
+  },
+  "376": {
+   "class": "GmGmkDrainTankSplashInit",
+   "name": "DrainTankSplash"
+  },
+  "377": {
+   "class": "GmGmkRockHookInit",
+   "name": "RockHook"
+  },
+  "378": {
+   "class": "GmGmkRockChaseInit",
+   "name": "RockChase"
+  },
+  "380": {
+   "class": "GmEneEp2HariSenboInit",
+   "name": "Ep2HariSenbo"
+  },
+  "381": {
+   "class": "GmEneEp2HariSenboInit",
+   "name": "Ep2HariSenbo"
+  },
+  "382": {
+   "class": "GmEneEp2HariSenboInit",
+   "name": "Ep2HariSenbo"
+  },
+  "383": {
+   "class": "GmEneEp2HariSenboInit",
+   "name": "Ep2HariSenbo"
+  },
+  "384": {
+   "class": "GmEneShuneInit",
+   "name": "Shune"
+  },
+  "385": {
+   "class": "GmEnePiranaInit",
+   "name": "Pirana"
+  },
+  "386": {
+   "class": "GmEneHopperInit",
+   "name": "Hopper"
+  },
+  "387": {
+   "class": "GmEneUriInit",
+   "name": "Uri"
+  },
+  "388": {
+   "class": "GmEneUriInit",
+   "name": "Uri"
+  },
+  "389": {
+   "class": "GmEneKokekkoInitBase",
+   "name": "KokekkoInitBase"
+  },
+  "390": {
+   "class": "GmEneAzaraInit",
+   "name": "Azara"
+  },
+  "391": {
+   "class": "GmEneShyInit",
+   "name": "Shy"
+  },
+  "392": {
+   "class": "GmEneSandWormInit",
+   "name": "SandWorm"
+  },
+  "393": {
+   "class": "GmEneSnowInit",
+   "name": "Snow"
+  },
+  "394": {
+   "class": "GmEneAbryInit",
+   "name": "Abry"
+  },
+  "395": {
+   "class": "GmEneScaraBodyInit",
+   "name": "ScaraBody"
+  },
+  "396": {
+   "class": "GmEneAbryInit",
+   "name": "Abry"
+  },
+  "397": {
+   "class": "GmEneEp2HariSenboInit",
+   "name": "Ep2HariSenbo"
+  },
+  "398": {
+   "class": "GmEneEp2HariSenboInit",
+   "name": "Ep2HariSenbo"
+  },
+  "399": {
+   "class": "GmEneEp2HariSenboInit",
+   "name": "Ep2HariSenbo"
+  },
+  "400": {
+   "class": "GmEneEp2HariSenboInit",
+   "name": "Ep2HariSenbo"
+  },
+  "401": {
+   "class": "GmEneEp2HariSenboInit",
+   "name": "Ep2HariSenbo"
+  },
+  "402": {
+   "class": "GmEneEp2HariSenboInit",
+   "name": "Ep2HariSenbo"
+  },
+  "433": {
+   "class": "GmEp2BossF1_2Init",
+   "name": "BossF1_2"
+  },
+  "434": {
+   "class": "GmEp2BossF1Init",
+   "name": "BossF1"
+  },
+  "435": {
+   "class": "_ZN2gm4boss10CBossF2Mgr10InitBossF2EP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "_ZN2gm4boss10CBossF2Mgr10InitBossF2EP24tag_GMS_EVE_RECORD_EVENTffh"
+  },
+  "436": {
+   "class": "_ZN2gm4boss9CBoss4Mgr9InitBoss4EP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "_ZN2gm4boss9CBoss4Mgr9InitBoss4EP24tag_GMS_EVE_RECORD_EVENTffh"
+  },
+  "437": {
+   "class": "GmEp2Boss2Init",
+   "name": "Boss2"
+  },
+  "438": {
+   "class": "GmEp2Boss3Init",
+   "name": "Boss3"
+  },
+  "439": {
+   "class": "GmEp2Boss1Init",
+   "name": "Boss1"
+  },
+  "440": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "441": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "442": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "443": {
+   "class": "GmGmkStartInit",
+   "name": "Start"
+  },
+  "444": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "445": {
+   "class": "GmGmkNeedleInit",
+   "name": "Needle"
+  },
+  "446": {
+   "class": "GmGmkNeedleInit",
+   "name": "Needle"
+  },
+  "447": {
+   "class": "GmGmkNeedleInit",
+   "name": "Needle"
+  },
+  "448": {
+   "class": "GmGmkNeedleInit",
+   "name": "Needle"
+  },
+  "449": {
+   "class": "GmGmkActNeedleInit",
+   "name": "ActNeedle"
+  },
+  "450": {
+   "class": "GmGmkActNeedleInit",
+   "name": "ActNeedle"
+  },
+  "451": {
+   "class": "GmGmkCamScrLimitInit",
+   "name": "CamScrLimit"
+  },
+  "452": {
+   "class": "GmGmkCamScrLimitReleaseInit",
+   "name": "CamScrLimitRelease"
+  },
+  "453": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "454": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "455": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "456": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "457": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "458": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "459": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "460": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "461": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "462": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "463": {
+   "class": "GmGmkCapsuleInit",
+   "name": "Capsule"
+  },
+  "464": {
+   "class": "GmGmkPointMarkerInit",
+   "name": "PointMarker"
+  },
+  "465": {
+   "class": "GmGmkBreakObjInit",
+   "name": "BreakObj"
+  },
+  "466": {
+   "class": "GmJetWallInit",
+   "name": "JetWall"
+  },
+  "467": {
+   "class": "GmJetWallInit",
+   "name": "JetWall"
+  },
+  "468": {
+   "class": "GmJetWallInit",
+   "name": "JetWall"
+  },
+  "469": {
+   "class": "GmJetWallInit",
+   "name": "JetWall"
+  },
+  "470": {
+   "class": "GmJetWallInit",
+   "name": "JetWall"
+  },
+  "471": {
+   "class": "GmJetWallInit",
+   "name": "JetWall"
+  },
+  "472": {
+   "class": "GmJetWallInit",
+   "name": "JetWall"
+  },
+  "473": {
+   "class": "GmJetWallInit",
+   "name": "JetWall"
+  },
+  "474": {
+   "class": "GmGmkBreakPillarInit",
+   "name": "BreakPillar"
+  },
+  "475": {
+   "class": "_Z24GmGmkAmbientFieldMgrInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldMgr"
+  },
+  "476": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "477": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "478": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "480": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "481": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "482": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "483": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "484": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "485": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "486": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "487": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "488": {
+   "class": "GmGmkBreakPillarDominoInit",
+   "name": "BreakPillarDomino"
+  },
+  "489": {
+   "class": "GmGmkBreakPillarDominoBooterInit",
+   "name": "BreakPillarDominoBooter"
+  },
+  "490": {
+   "class": "GmGmkBreakWall_C1Init",
+   "name": "BreakWall_C1"
+  },
+  "491": {
+   "class": "GmGmkBreakFloorInit",
+   "name": "BreakFloor"
+  },
+  "492": {
+   "class": "GmGmkWaterAreaInit",
+   "name": "WaterArea"
+  },
+  "493": {
+   "class": "GmGmkWaterAreaInit",
+   "name": "WaterArea"
+  },
+  "494": {
+   "class": "GmGmkWaterAreaInit",
+   "name": "WaterArea"
+  },
+  "495": {
+   "class": "GmGmkWaterAreaInit",
+   "name": "WaterArea"
+  },
+  "496": {
+   "class": "GmGmkWaterAreaInit",
+   "name": "WaterArea"
+  },
+  "497": {
+   "class": "GmGmkRotarySwInit",
+   "name": "RotarySw"
+  },
+  "498": {
+   "class": "GmGmkSwAreaInit",
+   "name": "SwArea"
+  },
+  "499": {
+   "class": "GmGmkSwLandInit",
+   "name": "SwLand"
+  },
+  "500": {
+   "class": "GmGmkFltPlrInit",
+   "name": "FltPlr"
+  },
+  "501": {
+   "class": "GmGmkFltPlrInit",
+   "name": "FltPlr"
+  },
+  "502": {
+   "class": "GmGmkFltPlrInit",
+   "name": "FltPlr"
+  },
+  "503": {
+   "class": "GmGmkFltPlrInit",
+   "name": "FltPlr"
+  },
+  "504": {
+   "class": "GmGmkFltPlrInit",
+   "name": "FltPlr"
+  },
+  "505": {
+   "class": "GmGmkFltPlrInit",
+   "name": "FltPlr"
+  },
+  "506": {
+   "class": "GmGmkFltPlrInit",
+   "name": "FltPlr"
+  },
+  "507": {
+   "class": "GmGmkFltPlrInit",
+   "name": "FltPlr"
+  },
+  "508": {
+   "class": "GmGmkFltPlrInit",
+   "name": "FltPlr"
+  },
+  "509": {
+   "class": "GmGmkFltPlrInit",
+   "name": "FltPlr"
+  },
+  "510": {
+   "class": "GmGmkFltPlrInit",
+   "name": "FltPlr"
+  },
+  "511": {
+   "class": "GmGmkDashPanelInit",
+   "name": "DashPanel"
+  },
+  "512": {
+   "class": "GmGmkDashPanelInit",
+   "name": "DashPanel"
+  },
+  "513": {
+   "class": "GmGmkDashPanelInit",
+   "name": "DashPanel"
+  },
+  "514": {
+   "class": "GmGmkDashPanelInit",
+   "name": "DashPanel"
+  },
+  "515": {
+   "class": "GmGmkDurableWallInit",
+   "name": "DurableWall"
+  },
+  "516": {
+   "class": "GmGmkDurableWallInit",
+   "name": "DurableWall"
+  },
+  "517": {
+   "class": "GmGmkDurableWallInit",
+   "name": "DurableWall"
+  },
+  "518": {
+   "class": "GmGmkDurableWallInit",
+   "name": "DurableWall"
+  },
+  "519": {
+   "class": "GmGmkBubbleManagerInit",
+   "name": "BubbleManager"
+  },
+  "520": {
+   "class": "GmGmkGoalPanelInit",
+   "name": "GoalPanel"
+  },
+  "521": {
+   "class": "GmGmkPFAreaInit",
+   "name": "PFArea"
+  },
+  "522": {
+   "class": "GmGmkFloor_1x1_Auto_Init",
+   "name": "Floor_1x1_Auto_"
+  },
+  "523": {
+   "class": "GmGmkFloor_1x1_Push_Init",
+   "name": "Floor_1x1_Push_"
+  },
+  "524": {
+   "class": "GmGmkFloor_1x1_Pull_Init",
+   "name": "Floor_1x1_Pull_"
+  },
+  "525": {
+   "class": "GmGmkFloor_1x2_Auto_Init",
+   "name": "Floor_1x2_Auto_"
+  },
+  "526": {
+   "class": "GmGmkFloor_1x2_Push_Init",
+   "name": "Floor_1x2_Push_"
+  },
+  "527": {
+   "class": "GmGmkFloor_1x2_Pull_Init",
+   "name": "Floor_1x2_Pull_"
+  },
+  "528": {
+   "class": "GmGmkFloor_2x1_Auto_Init",
+   "name": "Floor_2x1_Auto_"
+  },
+  "529": {
+   "class": "GmGmkFloor_2x1_Push_Init",
+   "name": "Floor_2x1_Push_"
+  },
+  "530": {
+   "class": "GmGmkFloor_2x1_Pull_Init",
+   "name": "Floor_2x1_Pull_"
+  },
+  "531": {
+   "class": "GmGmkPFWindow_1x1_Init",
+   "name": "PFWindow_1x1_"
+  },
+  "532": {
+   "class": "GmGmkPFWindow_1x2_Init",
+   "name": "PFWindow_1x2_"
+  },
+  "533": {
+   "class": "GmGmkPFWindow_2x1_Init",
+   "name": "PFWindow_2x1_"
+  },
+  "534": {
+   "class": "GmGmkLandInit",
+   "name": "Land"
+  },
+  "535": {
+   "class": "GmGmkLandInit",
+   "name": "Land"
+  },
+  "536": {
+   "class": "GmGmkLandInit",
+   "name": "Land"
+  },
+  "537": {
+   "class": "GmGmkLandInit",
+   "name": "Land"
+  },
+  "538": {
+   "class": "GmGmkLandInit",
+   "name": "Land"
+  },
+  "539": {
+   "class": "GmGmkLandInit",
+   "name": "Land"
+  },
+  "540": {
+   "class": "GmGmkLandInit",
+   "name": "Land"
+  },
+  "541": {
+   "class": "GmGmkLandRoutePosInit",
+   "name": "LandRoutePos"
+  },
+  "542": {
+   "class": "GmGmkFallDieVisibleInit",
+   "name": "FallDieVisible"
+  },
+  "543": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "544": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "545": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "546": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "547": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "548": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "549": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "550": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "551": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "552": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "553": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "554": {
+   "class": "_Z26GmGmkAmbientFieldPointInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AmbientFieldPoint"
+  },
+  "555": {
+   "class": "GmGmkFlagChangeInit",
+   "name": "FlagChange"
+  },
+  "556": {
+   "class": "GmGmkFltPlrInit",
+   "name": "FltPlr"
+  },
+  "557": {
+   "class": "GmGmkFltPlrInit",
+   "name": "FltPlr"
+  },
+  "558": {
+   "class": "GmGmkBalanceLandInit",
+   "name": "BalanceLand"
+  },
+  "559": {
+   "class": "GmGmkWaterfallSplitInit",
+   "name": "WaterfallSplit"
+  },
+  "560": {
+   "class": "GmGmkSconceInit",
+   "name": "Sconce"
+  },
+  "561": {
+   "class": "GmGmkSconceInit",
+   "name": "Sconce"
+  },
+  "562": {
+   "class": "GmGmkSconceInit",
+   "name": "Sconce"
+  },
+  "563": {
+   "class": "GmGmkSconceInit",
+   "name": "Sconce"
+  },
+  "564": {
+   "class": "GmGmkSconceInit",
+   "name": "Sconce"
+  },
+  "565": {
+   "class": "GmGmkSconceInit",
+   "name": "Sconce"
+  },
+  "566": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "567": {
+   "class": "GmGmkItemInit",
+   "name": "Item"
+  },
+  "568": {
+   "class": "GmGmkMetalUnitEnterInit",
+   "name": "MetalUnitEnter"
+  },
+  "569": {
+   "class": "GmGmkMetalUnitExitInit",
+   "name": "MetalUnitExit"
+  },
+  "570": {
+   "class": "GmGmkBurnerInit",
+   "name": "Burner"
+  },
+  "571": {
+   "class": "GmGmkBurnerInit",
+   "name": "Burner"
+  },
+  "572": {
+   "class": "GmGmkBurnerInit",
+   "name": "Burner"
+  },
+  "573": {
+   "class": "GmGmkLightRingInit",
+   "name": "LightRing"
+  },
+  "574": {
+   "class": "GmGmkLightRingInit",
+   "name": "LightRing"
+  },
+  "575": {
+   "class": "GmGmkLightRingExitPipeInit",
+   "name": "LightRingExitPipe"
+  },
+  "576": {
+   "class": "GmGmkPropellerInit",
+   "name": "Propeller"
+  },
+  "577": {
+   "class": "GmGmkCamScaleFixInit",
+   "name": "CamScaleFix"
+  },
+  "578": {
+   "class": "GmGmkCamScaleFixInit",
+   "name": "CamScaleFix"
+  },
+  "579": {
+   "class": "GmGmkCamScaleFixInit",
+   "name": "CamScaleFix"
+  },
+  "580": {
+   "class": "GmGmkCamScaleFixInit",
+   "name": "CamScaleFix"
+  },
+  "581": {
+   "class": "GmGmkCamScaleFixInit",
+   "name": "CamScaleFix"
+  },
+  "582": {
+   "class": "GmGmkCamScaleFixInit",
+   "name": "CamScaleFix"
+  },
+  "583": {
+   "class": "GmGmkTornadoInit",
+   "name": "Tornado"
+  },
+  "584": {
+   "class": "GmGmkTornadoReturnPointInit",
+   "name": "TornadoReturnPoint"
+  },
+  "585": {
+   "class": "GmGmkTornadoAccelAreaInit",
+   "name": "TornadoAccelArea"
+  },
+  "586": {
+   "class": "GmGmkWallRunEnterInit",
+   "name": "WallRunEnter"
+  },
+  "587": {
+   "class": "GmGmkWallRunWallInit",
+   "name": "WallRunWall"
+  },
+  "588": {
+   "class": "GmGmkBossLoopInit",
+   "name": "BossLoop"
+  },
+  "589": {
+   "class": "GmGmkSnowBallPushInit",
+   "name": "SnowBallPush"
+  },
+  "590": {
+   "class": "GmGmkSnowBallRectInit",
+   "name": "SnowBallRect"
+  },
+  "591": {
+   "class": "GmGmkBossLoopMgrInit",
+   "name": "BossLoopMgr"
+  },
+  "592": {
+   "class": "GmGmkRailChangeBAreaLineInit",
+   "name": "RailChangeBAreaLine"
+  },
+  "593": {
+   "class": "GmGmkRailInit",
+   "name": "Rail"
+  },
+  "594": {
+   "class": "GmGmkRailInit",
+   "name": "Rail"
+  },
+  "595": {
+   "class": "GmGmkRailInit",
+   "name": "Rail"
+  },
+  "596": {
+   "class": "GmGmkRailInit",
+   "name": "Rail"
+  },
+  "597": {
+   "class": "GmGmkRailInit",
+   "name": "Rail"
+  },
+  "598": {
+   "class": "GmGmkRailInit",
+   "name": "Rail"
+  },
+  "599": {
+   "class": "GmGmkRailInit",
+   "name": "Rail"
+  },
+  "600": {
+   "class": "GmGmkRailInit",
+   "name": "Rail"
+  },
+  "601": {
+   "class": "GmGmkRailInit",
+   "name": "Rail"
+  },
+  "602": {
+   "class": "GmGmkRailInit",
+   "name": "Rail"
+  },
+  "603": {
+   "class": "GmGmkRailInit",
+   "name": "Rail"
+  },
+  "604": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "605": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "606": {
+   "class": "GmGmkBackSideRingInit",
+   "name": "BackSideRing"
+  },
+  "607": {
+   "class": "GmGmkAvalancheMoveCreateInit",
+   "name": "AvalancheMoveCreate"
+  },
+  "608": {
+   "class": "GmGmkAvalancheRideInit",
+   "name": "AvalancheRide"
+  },
+  "609": {
+   "class": "GmGmkAvalancheRideInit",
+   "name": "AvalancheRide"
+  },
+  "610": {
+   "class": "GmGmkAvalancheRideInit",
+   "name": "AvalancheRide"
+  },
+  "611": {
+   "class": "GmGmkRailInit",
+   "name": "Rail"
+  },
+  "612": {
+   "class": "GmGmkRailInit",
+   "name": "Rail"
+  },
+  "613": {
+   "class": "GmGmkBreakRailInit",
+   "name": "BreakRail"
+  },
+  "614": {
+   "class": "GmGmkBreakRailInit",
+   "name": "BreakRail"
+  },
+  "615": {
+   "class": "GmGmkBreakRailInit",
+   "name": "BreakRail"
+  },
+  "616": {
+   "class": "GmGmkBreakRailInit",
+   "name": "BreakRail"
+  },
+  "617": {
+   "class": "GmGmkMetalUnitMoveInit",
+   "name": "MetalUnitMove"
+  },
+  "618": {
+   "class": "GmGmkMetalUnitMeteorInit",
+   "name": "MetalUnitMeteor"
+  },
+  "619": {
+   "class": "GmGmkMetalUnitIronballInit",
+   "name": "MetalUnitIronball"
+  },
+  "620": {
+   "class": "GmGmkMetalUnitValkynInit",
+   "name": "MetalUnitValkyn"
+  },
+  "621": {
+   "class": "GmGmkMetalUnitDawsonInit",
+   "name": "MetalUnitDawson"
+  },
+  "622": {
+   "class": "GmGmkBreakRailInit",
+   "name": "BreakRail"
+  },
+  "623": {
+   "class": "GmGmkBreakRailInit",
+   "name": "BreakRail"
+  },
+  "624": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "625": {
+   "class": "GmGmkSnowPloughWallInit",
+   "name": "SnowPloughWall"
+  },
+  "626": {
+   "class": "GmGmkSnowPloughWindowInit",
+   "name": "SnowPloughWindow"
+  },
+  "627": {
+   "class": "GmGmkAvalancheRideFallInit",
+   "name": "AvalancheRideFall"
+  },
+  "628": {
+   "class": "GmEneUriGmkNoticeRectInit",
+   "name": "UriGmkNoticeRect"
+  },
+  "629": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "630": {
+   "class": "GmGmkSpringInit",
+   "name": "Spring"
+  },
+  "631": {
+   "class": "GmGmkFrozenWaterInit",
+   "name": "FrozenWater"
+  },
+  "632": {
+   "class": "GmGmkSandStormMgrInit",
+   "name": "SandStormMgr"
+  },
+  "633": {
+   "class": "GmGmkSandStormInit",
+   "name": "SandStorm"
+  },
+  "634": {
+   "class": "GmGmkOilRoadMakerInit",
+   "name": "OilRoadMaker"
+  },
+  "635": {
+   "class": "GmGmkOilRoadEraserInit",
+   "name": "OilRoadEraser"
+  },
+  "636": {
+   "class": "GmGmkQuicksandMgrInit",
+   "name": "QuicksandMgr"
+  },
+  "637": {
+   "class": "GmEneAzaraGmkNoticeRectInit",
+   "name": "AzaraGmkNoticeRect"
+  },
+  "638": {
+   "class": "GmGmkMetalUnitDefeatInit",
+   "name": "MetalUnitDefeat"
+  },
+  "639": {
+   "class": "GmGmkCloudMakerInit",
+   "name": "CloudMaker"
+  },
+  "640": {
+   "class": "GmEneSnowGmkNoticeRectInit",
+   "name": "SnowGmkNoticeRect"
+  },
+  "641": {
+   "class": "GmGmkOilSliderInit",
+   "name": "OilSlider"
+  },
+  "642": {
+   "class": "GmGmkOilSliderInit",
+   "name": "OilSlider"
+  },
+  "643": {
+   "class": "GmGmkOilSliderInit",
+   "name": "OilSlider"
+  },
+  "644": {
+   "class": "GmGmkOilSliderInit",
+   "name": "OilSlider"
+  },
+  "645": {
+   "class": "GmGmkOilSliderInit",
+   "name": "OilSlider"
+  },
+  "646": {
+   "class": "GmGmkOilSliderInit",
+   "name": "OilSlider"
+  },
+  "647": {
+   "class": "GmGmkOilSliderInit",
+   "name": "OilSlider"
+  },
+  "648": {
+   "class": "GmGmkTornadoBoss4GoalPosInit",
+   "name": "TornadoBoss4GoalPos"
+  },
+  "649": {
+   "class": "GmGmkDecoFlowerInit",
+   "name": "DecoFlower"
+  },
+  "650": {
+   "class": "GmGmkSandStormStoneInit",
+   "name": "SandStormStone"
+  },
+  "651": {
+   "class": "GmGmkTorchDecoInit",
+   "name": "TorchDeco"
+  },
+  "652": {
+   "class": "GmGmkTorchDecoInit",
+   "name": "TorchDeco"
+  },
+  "653": {
+   "class": "GmGmkSandBranchInit",
+   "name": "SandBranch"
+  },
+  "654": {
+   "class": "GmGmkSandBranchTopInit",
+   "name": "SandBranchTop"
+  },
+  "655": {
+   "class": "GmGmkEp2ShutterSwitchInit",
+   "name": "Ep2ShutterSwitch"
+  },
+  "656": {
+   "class": "GmGmkEp2ShutterCoverInit",
+   "name": "Ep2ShutterCover"
+  },
+  "657": {
+   "class": "GmGmkEp2BossShutterSwitchInit",
+   "name": "Ep2BossShutterSwitch"
+  },
+  "658": {
+   "class": "GmGmkEp2BossShutterCoverInit",
+   "name": "Ep2BossShutterCover"
+  },
+  "659": {
+   "class": "GmGmkSignInit",
+   "name": "Sign"
+  },
+  "660": {
+   "class": "GmGmkCamMoveDirPrioMgrInit",
+   "name": "CamMoveDirPrioMgr"
+  },
+  "661": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "662": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "663": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "664": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "665": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "666": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "667": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "668": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "672": {
+   "class": "GmGmkSandStormPMInit",
+   "name": "SandStormPM"
+  },
+  "673": {
+   "class": "GmGmkSandTankShutterInit",
+   "name": "SandTankShutter"
+  },
+  "674": {
+   "class": "GmGmkSandTankChgSpeedInit",
+   "name": "SandTankChgSpeed"
+  },
+  "675": {
+   "class": "GmGmkSandTankChgHeightInit",
+   "name": "SandTankChgHeight"
+  },
+  "676": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "677": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "678": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "679": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "680": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "681": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "682": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "683": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "684": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "685": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "686": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "687": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "688": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "689": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "690": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "691": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "692": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "693": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "694": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "695": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "696": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "697": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "698": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "699": {
+   "class": "GmGmkGravityInit",
+   "name": "Gravity"
+  },
+  "700": {
+   "class": "GmGmkDashPanelInit",
+   "name": "DashPanel"
+  },
+  "701": {
+   "class": "GmGmkDashPanelInit",
+   "name": "DashPanel"
+  },
+  "702": {
+   "class": "GmGmkDashPanelInit",
+   "name": "DashPanel"
+  },
+  "703": {
+   "class": "GmGmkDashPanelInit",
+   "name": "DashPanel"
+  },
+  "704": {
+   "class": "GmGmkTagItemProductStartPosInit",
+   "name": "TagItemProductStartPos"
+  },
+  "705": {
+   "class": "GmGmkMetalUnitEscapeInit",
+   "name": "MetalUnitEscape"
+  },
+  "706": {
+   "class": "GmGmkTutorialBoardSSpinInit",
+   "name": "TutorialBoardSSpin"
+  },
+  "707": {
+   "class": "GmGmkTutorialBoardPropInit",
+   "name": "TutorialBoardProp"
+  },
+  "708": {
+   "class": "GmGmkTutorialBoardScrewInit",
+   "name": "TutorialBoardScrew"
+  },
+  "709": {
+   "class": "_Z20GmGmkSnowfallMgrInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "SnowfallMgr"
+  },
+  "710": {
+   "class": "_Z22GmGmkSnowfallLimitInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "SnowfallLimit"
+  },
+  "711": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "712": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "713": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "714": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "715": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "716": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "717": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "718": {
+   "class": "GmGmkCamMoveDirPrioInit",
+   "name": "CamMoveDirPrio"
+  },
+  "719": {
+   "class": "GmGmkRedRingInit",
+   "name": "RedRing"
+  },
+  "720": {
+   "class": "GmGmkDecoBombInit",
+   "name": "DecoBomb"
+  },
+  "721": {
+   "class": "GmGmkFallSignInit",
+   "name": "FallSign"
+  },
+  "722": {
+   "class": "GmGmkEnvSeInit",
+   "name": "EnvSe"
+  },
+  "723": {
+   "class": "_Z28GmGmkRenderingTrimmerMgrInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "RenderingTrimmerMgr"
+  },
+  "724": {
+   "class": "_Z29GmGmkRenderingTrimmerAreaInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "RenderingTrimmerArea"
+  },
+  "725": {
+   "class": "GmGmkCmnAcquireTrophyAreaInit",
+   "name": "CmnAcquireTrophyArea"
+  },
+  "726": {
+   "class": "GmGmkTutorialBoardRotarySwitchInit",
+   "name": "TutorialBoardRotarySwitch"
+  },
+  "727": {
+   "class": "GmGmkShadowBlockInit",
+   "name": "ShadowBlock"
+  },
+  "728": {
+   "class": "GmGmkARingInit",
+   "name": "ARing"
+  },
+  "730": {
+   "class": "GmEneKokekkoInitBody",
+   "name": "KokekkoInitBody"
+  },
+  "731": {
+   "class": "GmEneDawsonInitBig",
+   "name": "DawsonInitBig"
+  },
+  "732": {
+   "class": "GmEneDawsonInitSmall",
+   "name": "DawsonInitSmall"
+  },
+  "733": {
+   "class": "GmEneValkynInit",
+   "name": "Valkyn"
+  },
+  "734": {
+   "class": "GmEneAbryInitParts",
+   "name": "AbryInitParts"
+  },
+  "735": {
+   "class": "GmEneScaraBallInit",
+   "name": "ScaraBall"
+  },
+  "736": {
+   "class": "GmEneSnowDebrisInit",
+   "name": "SnowDebris"
+  },
+  "737": {
+   "class": "GmEp2Boss1EggInit",
+   "name": "Boss1Egg"
+  },
+  "738": {
+   "class": "GmEp2Boss1BodyInit",
+   "name": "Boss1Body"
+  },
+  "739": {
+   "class": "GmEp2Boss1BodyInitArmor",
+   "name": "Boss1BodyInitArmor"
+  },
+  "740": {
+   "class": "GmEp2Boss1FlowerInit",
+   "name": "Boss1Flower"
+  },
+  "741": {
+   "class": "GmEp2Boss1TentacleInit",
+   "name": "Boss1Tentacle"
+  },
+  "742": {
+   "class": "GmEp2Boss1PoleInit",
+   "name": "Boss1Pole"
+  },
+  "743": {
+   "class": "GmEp2Boss1LandInit",
+   "name": "Boss1Land"
+  },
+  "744": {
+   "class": "GmEp2Boss3EggInit",
+   "name": "Boss3Egg"
+  },
+  "745": {
+   "class": "GmEp2Boss3BodyInit",
+   "name": "Boss3Body"
+  },
+  "746": {
+   "class": "GmEp2Boss3RoboTInit",
+   "name": "Boss3RoboT"
+  },
+  "747": {
+   "class": "GmEp2Boss3RoboBInit",
+   "name": "Boss3RoboB"
+  },
+  "748": {
+   "class": "GmEp2Boss2RocketInit",
+   "name": "Boss2Rocket"
+  },
+  "749": {
+   "class": "_ZN2gm4boss12CBoss4Intcpt20InitBoss4InterceptorEP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "_ZN2gm4boss12CBoss4Intcpt20InitBoss4InterceptorEP24tag_GMS_EVE_RECORD_EVENTffh"
+  },
+  "750": {
+   "class": "_ZN2gm4boss9CBoss4Msn19InitBoss4MetalSonicEP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "_ZN2gm4boss9CBoss4Msn19InitBoss4MetalSonicEP24tag_GMS_EVE_RECORD_EVENTffh"
+  },
+  "751": {
+   "class": "_ZN2gm4boss11CBoss4Laser14InitBoss4LaserEP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "_ZN2gm4boss11CBoss4Laser14InitBoss4LaserEP24tag_GMS_EVE_RECORD_EVENTffh"
+  },
+  "753": {
+   "class": "_ZN2gm4boss12CBoss4Valkyn15InitBoss4ValkynEP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "_ZN2gm4boss12CBoss4Valkyn15InitBoss4ValkynEP24tag_GMS_EVE_RECORD_EVENTffh"
+  },
+  "754": {
+   "class": "_ZN2gm4boss13CBoss4Missile16InitBoss4MissileEP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "_ZN2gm4boss13CBoss4Missile16InitBoss4MissileEP24tag_GMS_EVE_RECORD_EVENTffh"
+  },
+  "755": {
+   "class": "_ZN2gm4boss10CBossF2Egg4InitEP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "_ZN2gm4boss10CBossF2Egg4InitEP24tag_GMS_EVE_RECORD_EVENTffh"
+  },
+  "756": {
+   "class": "_ZN2gm4boss11CBossF2Body4InitEP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "_ZN2gm4boss11CBossF2Body4InitEP24tag_GMS_EVE_RECORD_EVENTffh"
+  },
+  "757": {
+   "class": "_ZN2gm4boss11CBossF2Core4InitEP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "_ZN2gm4boss11CBossF2Core4InitEP24tag_GMS_EVE_RECORD_EVENTffh"
+  },
+  "758": {
+   "class": "GmEp2BossF1EggInit",
+   "name": "BossF1Egg"
+  },
+  "759": {
+   "class": "GmEp2BossF1BodyInit",
+   "name": "BossF1Body"
+  },
+  "760": {
+   "class": "GmEp2BossF1TopCoverInit",
+   "name": "BossF1TopCover"
+  },
+  "761": {
+   "class": "GmGmkStandNeedleInit",
+   "name": "StandNeedle"
+  },
+  "762": {
+   "class": "GmGmkCamScrLimitInit",
+   "name": "CamScrLimit"
+  },
+  "763": {
+   "class": "GmGmkCamScrLimitReleaseInit",
+   "name": "CamScrLimitRelease"
+  },
+  "764": {
+   "class": "GmGmkCapsuleBodyInit",
+   "name": "CapsuleBody"
+  },
+  "765": {
+   "class": "GmJetWallArrowInit",
+   "name": "JetWallArrow"
+  },
+  "766": {
+   "class": "GmJetWallWaterInit",
+   "name": "JetWallWater"
+  },
+  "767": {
+   "class": "GmGmkLandRouteMgrInit",
+   "name": "LandRouteMgr"
+  },
+  "768": {
+   "class": "GmGmkBreakPillarDominoStepInit",
+   "name": "BreakPillarDominoStep"
+  },
+  "769": {
+   "class": "GmGmkBreakPillarDominoPillarInit",
+   "name": "BreakPillarDominoPillar"
+  },
+  "770": {
+   "class": "GmGmkRotarySwFrameInit",
+   "name": "RotarySwFrame"
+  },
+  "771": {
+   "class": "GmGmkCamScrLimitInit",
+   "name": "CamScrLimit"
+  },
+  "772": {
+   "class": "GmGmkLightRingCoverInit",
+   "name": "LightRingCover"
+  },
+  "773": {
+   "class": "GmGmkLightRingMoveRootInit",
+   "name": "LightRingMoveRoot"
+  },
+  "774": {
+   "class": "GmGmkLightRingExitInit",
+   "name": "LightRingExit"
+  },
+  "775": {
+   "class": "GmGmkLightRingMainPipeInit",
+   "name": "LightRingMainPipe"
+  },
+  "776": {
+   "class": "GmGmkSplRingInit",
+   "name": "SplRing"
+  },
+  "777": {
+   "class": "GmEp2Boss3ContainerMgrInit",
+   "name": "Boss3ContainerMgr"
+  },
+  "778": {
+   "class": "GmEp2Boss3ContainerInit",
+   "name": "Boss3Container"
+  },
+  "779": {
+   "class": "GmEp2Boss3ContainerInitNeedle",
+   "name": "Boss3ContainerInitNeedle"
+  },
+  "780": {
+   "class": "GmEp2Boss3BodyInitJunk",
+   "name": "Boss3BodyInitJunk"
+  },
+  "781": {
+   "class": "GmEp2Boss3ShutterInit",
+   "name": "Boss3Shutter"
+  },
+  "782": {
+   "class": "GmEp2Boss3BodyInitJunkBig",
+   "name": "Boss3BodyInitJunkBig"
+  },
+  "783": {
+   "class": "_Z19GmGmkAiObserverInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AiObserver"
+  },
+  "784": {
+   "class": "_Z33GmGmkAiObserverCollisionDroneInitP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "AiObserverCollisionDrone"
+  },
+  "785": {
+   "class": "GmGmkMetalUnitMgrInit",
+   "name": "MetalUnitMgr"
+  },
+  "786": {
+   "class": "GmGmkAvalancheMoveInit",
+   "name": "AvalancheMove"
+  },
+  "787": {
+   "class": "GmGmkSnowPloughRoadInit",
+   "name": "SnowPloughRoad"
+  },
+  "788": {
+   "class": "GmGmkSnowPloughEnterInit",
+   "name": "SnowPloughEnter"
+  },
+  "789": {
+   "class": "GmGmkSnowPloughMgrInit",
+   "name": "SnowPloughMgr"
+  },
+  "790": {
+   "class": "GmGmkOilRoadFlameInit",
+   "name": "OilRoadFlame"
+  },
+  "791": {
+   "class": "GmGmkCloudMainInit",
+   "name": "CloudMain"
+  },
+  "792": {
+   "class": "GmGmkDecoFlowerRidingSnowInit",
+   "name": "DecoFlowerRidingSnow"
+  },
+  "793": {
+   "class": "GmGmkEp2ShutterInit",
+   "name": "Ep2Shutter"
+  },
+  "794": {
+   "class": "GmGmkEp2BossShutterInit",
+   "name": "Ep2BossShutter"
+  },
+  "795": {
+   "class": "_ZN2gm4boss12CBossF2Field4InitEP24tag_GMS_EVE_RECORD_EVENTffh",
+   "name": "_ZN2gm4boss12CBossF2Field4InitEP24tag_GMS_EVE_RECORD_EVENTffh"
+  },
+  "796": {
+   "class": "GmGmkSandTankMgrInit",
+   "name": "SandTankMgr"
+  },
+  "797": {
+   "class": "GmGmkTornadoMoveRootInit",
+   "name": "TornadoMoveRoot"
+  },
+  "798": {
+   "class": "GmGmkEp2BossF1MovTAllCreateInit",
+   "name": "Ep2BossF1MovTAllCreate"
+  },
+  "799": {
+   "class": "GmGmkGravityMgrInit",
+   "name": "GravityMgr"
+  },
+  "800": {
+   "class": "GmGmkCamScaleFixMgrInit",
+   "name": "CamScaleFixMgr"
+  },
+  "801": {
+   "class": "GmGmkOilSliderSEMgrInit",
+   "name": "OilSliderSEMgr"
+  },
+  "802": {
+   "class": "GmGmkSoundSEMgrInit",
+   "name": "SoundSEMgr"
+  }
+ }
+}

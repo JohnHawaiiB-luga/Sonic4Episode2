@@ -99,16 +99,19 @@ public sealed class GameEngine
     /// The object id of the act start marker.
     /// </summary>
     /// <remarks>
-    /// Not a name — a structural identification. Across the 13 non-boss acts it
-    /// is placed exactly once per act at a mean 3% of the act's width, in the
-    /// playable band; nothing else has that shape. It is where the original game
-    /// starts the player, and where this engine now does.
+    /// First identified structurally: across the 13 non-boss acts it is placed
+    /// exactly once per act at a mean 3% of the act's width, and nothing else has
+    /// that shape. The symbolized build later <b>confirmed it by name</b> —
+    /// dispatch slot 443 is <c>GmGmkStartInit</c>. The agreement of a statistical
+    /// identification with an independent linker symbol is what anchors the whole
+    /// object catalogue; see <see cref="Assets.ObjectCatalog"/>.
     /// </remarks>
     public const int StartMarkerId = 443;
 
     /// <summary>
-    /// The object id of the goal panel, identified the same way: exactly once
-    /// per act, at a mean 86% of the act's width, in 11 of 13 acts.
+    /// The object id of the goal panel, identified the same way — exactly once
+    /// per act at a mean 86% of the act's width — and likewise confirmed by name:
+    /// slot 520 is <c>GmGmkGoalPanelInit</c>.
     /// </summary>
     public const int GoalPanelId = 520;
 
@@ -224,10 +227,14 @@ public sealed class GameEngine
         Springs = new Springs(placements);
         DashPanels = new DashPanels(placements);
         StageName = NameOf(actPath);
-        int identified = placements.Count(p => ObjectCatalog.IsKnown(p.ObjectId));
+        // Report what the placements actually became. A behaviour wired to the
+        // wrong object id spawns nothing and looks identical to one that works,
+        // which is exactly how springs sat on an unplaced id for two beats.
+        int identified = placements.Count(p => ObjectCatalog.ClassOf(p.ObjectId) is not null);
         Status = $"{assembler.TilesPlaced} tiles, {batch.VertexCount:N0} vertices, " +
                  $"{batch.TriangleCount:N0} triangles, " +
                  $"{layers} layers, {identified}/{placements.Count} placements identified, " +
+                 $"{Springs.Count} springs, {DashPanels.Count} dash panels, " +
                  $"{rings.Count} rings" +
                  (Collision?.HasShapes == true ? ", height fields" : ", blocky collision") +
                  (Collision?.HasAngles == true ? " with angles" : "");

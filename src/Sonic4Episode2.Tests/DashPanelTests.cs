@@ -8,7 +8,7 @@ namespace Sonic4Episode2.Tests;
 public class DashPanelTests
 {
     private static int SpeedId { get; } =
-        ObjectCatalog.All.First(e => e.Name == "Speed").Id;
+        ObjectCatalog.IdsOfClass("DashPanel").First();
 
     private static Player Grounded()
     {

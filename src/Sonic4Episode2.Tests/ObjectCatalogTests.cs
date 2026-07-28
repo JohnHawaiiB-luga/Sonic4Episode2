@@ -31,6 +31,50 @@ public class ObjectCatalogTests
     }
 
     [Fact]
+    public void EngineClassesComeFromTheSymbolizedBuild()
+    {
+        // The two anchors: these ids were identified from placement statistics
+        // alone, and the linker's own names landed on exactly them.
+        Assert.Equal("Start", ObjectCatalog.ClassOf(443));
+        Assert.Equal("GoalPanel", ObjectCatalog.ClassOf(520));
+
+        // What beat 52 guessed was a checkpoint is the Red Star Ring.
+        Assert.Equal("RedRing", ObjectCatalog.ClassOf(719));
+
+        Assert.Equal(679, ObjectCatalog.All.Count(e => e.Class is not null));
+    }
+
+    [Fact]
+    public void ClassAndAssetNameDescribeDifferentThings()
+    {
+        // Where both exist they agree in meaning, not in wording: the object
+        // loads a CandleStick and its class is LightMask. Matching behaviours on
+        // the asset name is what put springs on an id the game never places.
+        Assert.Equal("CandleStick", ObjectCatalog.NameOf(312));
+        Assert.Equal("LightMask", ObjectCatalog.ClassOf(312));
+
+        // ...and sometimes they agree outright, which is the cross-check.
+        Assert.Equal("WaterSlider", ObjectCatalog.NameOf(132));
+        Assert.Equal("WaterSlider", ObjectCatalog.ClassOf(132));
+    }
+
+    [Fact]
+    public void SpringsAndDashPanelsAreTheRecoveredIdsNotTheGuessedOnes()
+    {
+        // Springs: ten consecutive variants plus two strays, none of them the
+        // id 295 the asset-name scrape used to claim.
+        Assert.All(Enumerable.Range(70, 10), i => Assert.True(ObjectCatalog.Is(i, "Spring")));
+        Assert.False(ObjectCatalog.Is(295, "Spring"));
+
+        Assert.All(Enumerable.Range(93, 4), i => Assert.True(ObjectCatalog.Is(i, "DashPanel")));
+        // 63-67 carried the asset name "Speed" but are item monitors.
+        Assert.Equal("Item", ObjectCatalog.ClassOf(63));
+
+        Assert.NotEmpty(ObjectCatalog.IdsOfClass("Spring"));
+        Assert.NotEmpty(ObjectCatalog.IdsOfClass("DashPanel"));
+    }
+
+    [Fact]
     public void DirectlyReadNamesAreMarkedApartFromInferredOnes()
     {
         Assert.True(ObjectCatalog.Lookup(132)!.Value.Direct);
@@ -64,10 +108,18 @@ public class ObjectCatalogTests
     [Fact]
     public void UnnamedObjectsStillDescribeAsTheirFamily()
     {
-        // The most-placed object in the game loads no named asset, so it falls
-        // back to its handler - which still tells it apart from everything else.
+        // The most-placed object in the game loads no named asset. It used to
+        // fall back to its handler address; the symbolized build says what it
+        // actually is - a camera direction hint, which is why it is everywhere.
         Assert.Null(ObjectCatalog.NameOf(715));
-        Assert.StartsWith("obj@", ObjectCatalog.Describe(715));
+        Assert.Equal("CamMoveDirPrio", ObjectCatalog.ClassOf(715));
+        Assert.Equal("CamMoveDirPrio", ObjectCatalog.Describe(715));
+
+        // G_ZONEF places ids 669-671, but neither build's dispatch table fills
+        // those slots, so they stay not recovered on both sides.
+        Assert.Null(ObjectCatalog.ClassOf(669));
+        Assert.False(ObjectCatalog.IsKnown(669));
+        Assert.Equal("obj669", ObjectCatalog.Describe(669));
     }
 
     [Fact]

@@ -44,7 +44,7 @@ public sealed class DashPanels
     public DashPanels(IReadOnlyList<Placement> placements)
     {
         _positions = placements
-            .Where(p => ObjectCatalog.NameOf(p.ObjectId) == "Speed")
+            .Where(p => ObjectCatalog.Is(p.ObjectId, "DashPanel"))
             .Select(p => new Vector2(p.X * PlayerPhysics.WorldPerPixel,
                                      -p.Y * PlayerPhysics.WorldPerPixel))
             .ToArray();
