@@ -200,6 +200,55 @@ which texture format SEGA actually shipped for mobile (our open ETC2/ASTC
 question), the real touch-control layout, and a second, *release-accurate* copy of
 the level data to check Beta 8 against.
 
+## The iOS build — the shader Rosetta stone
+
+The iOS release (`com.sega.sonic4ep2` 1.0, iOS 4.0 target, May 2012) is the most
+directly useful oracle for **rendering**, for one reason: where the PC build ships
+`NNSTDSHADER/SHADER.AMB` containing **1,873 compiled Direct3D 9 bytecode blobs**,
+iOS ships the *same* directory as **GLSL source** —
+`nnstdshader.vert` (36 KB) and `nnstdshader.frag` (32 KB).
+
+It is also the only build whose data we can read with no new work:
+**400 of 400 sampled `.AMB` archives parse with our existing decoder, 0 failures**,
+confirming the AMB spec is platform-universal. Models use the same NN structures
+under a different platform letter — `.LNO`/`.LNM`/`.LNV` where PC uses
+`.ZNO`/`.ZNM`/`.ZNV`. Textures are `.PVR` (PowerVR), audio is CRI `.ACB`/`.awb`
+rather than the PC's `.CSB`/`.CPK`, and each zone carries a small 2,228-byte
+`STENV/STAGE_ENV_ZONE*.GPB` — environment settings, undecoded.
+
+### The standard shader interface (recovered, names only)
+
+The library is one über-shader configured by ~390 `#define` symbols per stage,
+which is where the PC's 1,873 compiled permutations come from — the same source
+compiled under different flag combinations. Naming convention is `nngl` +
+`a`=attribute, `u`=uniform, `v`=varying, `tex`=sampler.
+
+| Role | Interface |
+|---|---|
+| Vertex inputs | `nnglaPosition`, `nnglaNormal`, `nnglaColor0`, `nnglaTexCoord0..3` |
+| **Skinning** | `nnglaWeight`, `nnglaMtxIdx`, `nngluPositionMatrices` |
+| Transforms | `nngluModelViewProjectionMatrix`, `nngluProjectionMatrix`, `nngluNormalMatrix`, `nngluTextureMatrix` |
+| Material | `nngluFrontMaterialDiffuse`, `nngluFrontMaterialSpecularShininess`, `nngluFrontMaterialEmissionAlphaRef` |
+| Lighting | `nngluParallelLightDirection/Diffuse/Ambient/Specular`, `nngluSceneAmbientTangent`, count via `NNGLD_OPT_NUM_PARALLEL_LIGHT` |
+| Texture stages | `nngltexBase`, `nngltexDecal`, `nngltexDecal2`, `nngltexDecal3`, `nngltexModulate`, `nngltexAdd`, `nngltexOpacity`, `nngltexNormal`, `nngltexUserSampler2D1/2` |
+| Stage blend levels | `nngluTexBaseDecal123Alpha`, `nngluTexShininessDualParaboloidAddLevel` |
+
+**This independently confirms the matrix palette (beat 58).** `nngluPositionMatrices`
+indexed by `nnglaMtxIdx` and weighted by `nnglaWeight` is precisely the model we
+recovered from `nnCalcMatrixPaletteNode` and implemented in `MatrixPalette.Build`
+— arrived at from a completely different direction, on a different platform.
+
+**It also states the fidelity gap exactly.** Our renderer does base texture plus
+alpha/additive blend. The real material model adds per-vertex lighting from
+parallel lights and scene ambient, material diffuse/specular/emission, up to seven
+further texture stages, and texture matrices. That list *is* the remaining
+rendering work, now enumerated rather than guessed.
+
+Clean-room note: we read this to learn the material model and interface. The
+shader source is SEGA's; nothing is copied. Our implementation is written against
+these recovered facts, exactly as the rest of the project is written against
+recovered symbol names and struct offsets.
+
 ## Working with it
 
 `rizin` is the tool on this machine (no IDA or Ghidra):
