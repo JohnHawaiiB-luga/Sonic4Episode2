@@ -557,21 +557,36 @@ public sealed class StageViewerGame : Game
                     catch (Exception ex) when (ex is DdsException or ArgumentException) { }
                 }
 
-            // The sky, distant scenery and clouds, deepest first.
-            var batch = new StageBatch();
-            float depth = -900f;
+            // The sky, distant scenery and clouds. Each model is authored around a
+            // shared origin - the vertical stack (clouds high, ground low) is in
+            // its centre offset, which TileMesh.From strips - so re-add that
+            // offset to keep the pieces in their authored relationship.
+            var loaded = new List<(NnModel Model, TileMesh Mesh)>();
             foreach (var entry in models.Entries)
             {
                 if (!entry.Name.EndsWith(".ZNO", StringComparison.OrdinalIgnoreCase)) continue;
                 var model = NnModel.Load(models.Read(entry));
                 if (model is null || model.MeshSets.Count == 0) continue;
-                batch.Add(TileMesh.From(model), 0f, 0f, depth);
+                loaded.Add((model, TileMesh.From(model)));
+            }
+            if (loaded.Count == 0) return;
+
+            float refX = loaded.Average(l => l.Model.Header.CenterX);
+            float refY = loaded.Average(l => l.Model.Header.CenterY);
+
+            var batch = new StageBatch();
+            float depth = -900f;
+            foreach (var (model, mesh) in loaded)
+            {
+                batch.Add(mesh, model.Header.CenterX - refX,
+                          -(model.Header.CenterY - refY), depth);
                 depth += 20f;
             }
 
-            var stage = _engine.Stage!;
-            _skyCenterX = (stage.MinX + stage.MaxX) / 2f;
-            _skyCenterY = (stage.MinY + stage.MaxY) / 2f;
+            // The background is anchored so its bottom sits near the top of the
+            // stage - the sky belongs above the level, not through it.
+            _skyCenterX = 0f;
+            _skyCenterY = _engine.Stage!.MaxY - (batch.MaxY - batch.MinY) * 0.25f;
 
             _skyVertices = new VertexPositionNormalTexture[batch.VertexCount];
             for (int i = 0; i < _skyVertices.Length; i++)
@@ -600,9 +615,11 @@ public sealed class StageViewerGame : Game
     {
         if (_skyVertices.Length == 0) return;
 
-        // Parallax: the background trails the camera at a fraction of its motion.
-        float px = _skyCenterX + (_camera.X - _skyCenterX) * 0.7f;
-        float py = _skyCenterY + (_camera.Y - _skyCenterY) * 0.3f + 80f;
+        // Camera-locked with parallax: the background follows the camera but drifts
+        // slower, so it reads as far away. The horizontal lock keeps it filling the
+        // view; the vertical anchor keeps the sky above the level.
+        float px = _camera.X * 0.85f;
+        float py = _skyCenterY + _camera.Y * 0.15f;
         _effect.World = Matrix.CreateTranslation(px, py, 0f);
 
         foreach (var pair in _skyBatches)
