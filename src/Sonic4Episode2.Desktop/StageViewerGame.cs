@@ -30,6 +30,17 @@ public sealed class StageViewerGame : Game
     private readonly IContentSource _content;
     private readonly string _actArchive;
 
+    /// <summary>
+    /// Scene ambient level, taken from the materials themselves.
+    /// </summary>
+    /// <remarks>
+    /// Every material in the build carries an ambient RGBA, and 4,859 of the
+    /// 9,767 use exactly this uniform grey — the commonest value by a wide
+    /// margin, with black (2,792) next. Using it as the scene ambient keeps
+    /// unlit faces at the level the artists authored instead of at black.
+    /// </remarks>
+    private const float StageAmbient = 0.30f;
+
     private BasicEffect _effect = null!;
     private VertexPositionNormalTexture[] _vertices = [];
     private readonly Dictionary<string, int[]> _batches = [];
@@ -165,7 +176,13 @@ public sealed class StageViewerGame : Game
                 new Vector3(batch.Positions[i * 3],
                             batch.Positions[i * 3 + 1],
                             batch.Positions[i * 3 + 2]),
-                Vector3.Backward,
+                // The model's own normal, not a constant. Feeding every vertex
+                // the same forward normal is what made the stage read flat.
+                i * 3 + 2 < batch.Normals.Count
+                    ? new Vector3(batch.Normals[i * 3],
+                                  batch.Normals[i * 3 + 1],
+                                  batch.Normals[i * 3 + 2])
+                    : Vector3.Backward,
                 // The V axis points the other way in a texture than in the
                 // model data, same flip the OBJ exporter needs.
                 new Vector2(batch.TexCoords[i * 2], 1f - batch.TexCoords[i * 2 + 1]));
@@ -219,12 +236,32 @@ public sealed class StageViewerGame : Game
 
     protected override void LoadContent()
     {
+        // The engine's own material model (docs/ORACLES.md) is texture modulated
+        // by a diffuse term, plus parallel lights over a scene ambient. This is
+        // the first cut of that: one parallel light against the ambient level
+        // the materials themselves carry. The remaining texture stages and the
+        // real light parameters are still to come.
         _effect = new BasicEffect(GraphicsDevice)
         {
             VertexColorEnabled = false,
             TextureEnabled = true,
-            LightingEnabled = false,
+            LightingEnabled = true,
+            PreferPerPixelLighting = false,
+            SpecularColor = Vector3.Zero,
         };
+        _effect.DirectionalLight0.Enabled = true;
+        // Down-forward, so the side-on faces a 2D stage presents catch light and
+        // surfaces angled away from the camera fall off instead of matching.
+        _effect.DirectionalLight0.Direction =
+            Vector3.Normalize(new Vector3(-0.3f, -0.6f, -0.75f));
+        _effect.DirectionalLight0.DiffuseColor = new Vector3(0.85f);
+        _effect.DirectionalLight0.SpecularColor = Vector3.Zero;
+        _effect.DirectionalLight1.Enabled = false;
+        _effect.DirectionalLight2.Enabled = false;
+        // MaterialAmbient 0.3 grey is the value 4,859 of the build's materials
+        // carry - the commonest ambient by a wide margin.
+        _effect.AmbientLightColor = new Vector3(StageAmbient);
+        _effect.DiffuseColor = Vector3.One;
         _white = new Texture2D(GraphicsDevice, 1, 1);
         _white.SetData(new[] { Color.Gray });
         _marker = new Texture2D(GraphicsDevice, 1, 1);

@@ -107,6 +107,15 @@ public sealed class TileMesh
     public required string?[] TriangleTextures { get; init; }
     public required MaterialBlend[] TriangleBlends { get; init; }
 
+    /// <summary>
+    /// Per-vertex normals, xyz triples. Zero-length when the model carries none.
+    /// </summary>
+    /// <remarks>
+    /// The renderer used a constant forward normal until these were plumbed
+    /// through, so every surface caught identical light and the stage read flat.
+    /// </remarks>
+    public required float[] Normals { get; init; }
+
     public static TileMesh From(NnModel model) => Build(model, worldMatrices: null);
 
     /// <summary>
@@ -146,6 +155,7 @@ public sealed class TileMesh
     {
         var positions = new List<float>();
         var texCoords = new List<float>();
+        var normals = new List<float>();
         var indices = new List<int>();
         var textures = new List<string?>();
         var blends = new List<MaterialBlend>();
@@ -165,6 +175,9 @@ public sealed class TileMesh
 
             var uvBuffer = new float[vertexList.Count * 2];
             bool hasUv = vertexList.ReadTexCoords(uvBuffer);
+
+            var nrmBuffer = new float[vertexList.Count * 3];
+            bool hasNormals = vertexList.ReadNormals(nrmBuffer);
 
             // Skinned: blend palette matrices per vertex. Posed: ride the node's
             // world matrix. Still: re-centre on the bbox, the behaviour From has
@@ -219,6 +232,18 @@ public sealed class TileMesh
                 }
                 texCoords.Add(hasUv ? uvBuffer[i * 2 + 0] : 0f);
                 texCoords.Add(hasUv ? uvBuffer[i * 2 + 1] : 0f);
+
+                // Normals ride the same transform as the position, minus the
+                // translation — a posed or skinned mesh must not keep bind-pose
+                // normals or its lighting stays stuck to the rest pose.
+                var n = hasNormals
+                    ? new Vector3(nrmBuffer[i * 3], nrmBuffer[i * 3 + 1], nrmBuffer[i * 3 + 2])
+                    : Vector3.UnitZ;
+                if (posed) n = Vector3.TransformNormal(n, transform);
+                if (n.LengthSquared() > 1e-12f) n = Vector3.Normalize(n);
+                normals.Add(n.X);
+                normals.Add(n.Y);
+                normals.Add(n.Z);
             }
 
             string? texture = model.TextureFor(mesh);
@@ -238,6 +263,7 @@ public sealed class TileMesh
         {
             Positions = [.. positions],
             TexCoords = [.. texCoords],
+            Normals = [.. normals],
             Indices = [.. indices],
             TriangleTextures = [.. textures],
             TriangleBlends = [.. blends],
@@ -255,6 +281,10 @@ public sealed class StageBatch
 {
     public List<float> Positions { get; } = [];
     public List<float> TexCoords { get; } = [];
+
+    /// <summary>Per-vertex normals, xyz triples, parallel to <see cref="Positions"/>.</summary>
+    public List<float> Normals { get; } = [];
+
     public List<int> Indices { get; } = [];
 
     /// <summary>
@@ -297,6 +327,19 @@ public sealed class StageBatch
             Positions.Add(mesh.Positions[i + 2] + depth);
             TexCoords.Add(mesh.TexCoords[v]);
             TexCoords.Add(mesh.TexCoords[v + 1]);
+
+            // Tiles are placed by translation only, so a normal carries across
+            // unchanged. Models without normals fall back to facing the camera.
+            if (i + 2 < mesh.Normals.Length)
+            {
+                Normals.Add(mesh.Normals[i]);
+                Normals.Add(mesh.Normals[i + 1]);
+                Normals.Add(mesh.Normals[i + 2]);
+            }
+            else
+            {
+                Normals.Add(0f); Normals.Add(0f); Normals.Add(1f);
+            }
 
             if (x < MinX) MinX = x;
             if (x > MaxX) MaxX = x;

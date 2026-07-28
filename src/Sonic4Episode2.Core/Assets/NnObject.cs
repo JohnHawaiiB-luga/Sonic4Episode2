@@ -273,6 +273,20 @@ public sealed class NnVertexList
         return true;
     }
 
+    /// <summary>Vertex normals, or false when the format carries none.</summary>
+    /// <remarks>
+    /// The renderer fed a constant forward normal before these were read, which
+    /// made every surface take identical light and is a large part of why the
+    /// stage looked flat. The engine's own shader takes them as
+    /// <c>nnglaNormal</c> — see <c>docs/ORACLES.md</c>.
+    /// </remarks>
+    public bool ReadNormals(Span<float> destination)
+    {
+        if (AttributeOffset(VertexFormat.Normal) < 0) return false;
+        ReadAttribute(VertexFormat.Normal, 3, destination);
+        return true;
+    }
+
     private void ReadAttribute(VertexFormat attribute, int components, Span<float> destination)
     {
         int at = AttributeOffset(attribute);
@@ -477,6 +491,29 @@ public sealed class NnMaterial
     /// <summary>How this material blends over what is already drawn.</summary>
     public MaterialBlend Blend { get; init; }
 
+    /// <summary>
+    /// The material's ambient term, RGBA.
+    /// </summary>
+    /// <remarks>
+    /// The colour block holds exactly two RGBA colours — <b>all 9,767 materials
+    /// in the build, no exceptions</b> — and this is the first. It clusters hard
+    /// on uniform grey (0.3,0.3,0.3 on 4,859 materials) or black (2,792), which
+    /// is an ambient-level signature rather than a surface colour.
+    /// </remarks>
+    public (float R, float G, float B, float A) Ambient { get; init; } = (0, 0, 0, 1);
+
+    /// <summary>
+    /// The material's diffuse term, RGBA. Modulates the texture.
+    /// </summary>
+    /// <remarks>
+    /// The second colour of the block. <b>Pure white on 87.6% of materials</b> —
+    /// i.e. "show the texture unchanged" — while its <b>alpha carries per-material
+    /// transparency</b> (1.0 on 9,154, but 0.0, 0.25, 0.41, 0.6 and 0.98 all
+    /// occur). White-with-meaningful-alpha is the classic diffuse signature, and
+    /// it matches <c>nngluFrontMaterialDiffuse</c> in the engine's own shader.
+    /// </remarks>
+    public (float R, float G, float B, float A) Diffuse { get; init; } = (1, 1, 1, 1);
+
     public static NnMaterial Parse(ReadOnlySpan<byte> data, int offset,
                                    uint pointerFlags, HashSet<int> relocations)
     {
@@ -506,14 +543,33 @@ public sealed class NnMaterial
                     data[(NnFile.DataBase + block + 4)..]);
         }
 
+        // The colour block: u32 count, then that many RGBA quads. Count is 2 on
+        // every material in the build — ambient first, diffuse second.
+        var ambient = (0f, 0f, 0f, 1f);
+        var diffuse = (1f, 1f, 1f, 1f);
+        int colourOffset = BinaryPrimitives.ReadInt32LittleEndian(data[(at + 8)..]);
+        if (colourOffset > 0 && NnFile.DataBase + colourOffset + 4 + 32 <= data.Length)
+        {
+            int cb = NnFile.DataBase + colourOffset;
+            if (BinaryPrimitives.ReadUInt32LittleEndian(data[cb..]) >= 2)
+            {
+                ambient = (Le.F32(data, cb + 4), Le.F32(data, cb + 8),
+                           Le.F32(data, cb + 12), Le.F32(data, cb + 16));
+                diffuse = (Le.F32(data, cb + 20), Le.F32(data, cb + 24),
+                           Le.F32(data, cb + 28), Le.F32(data, cb + 32));
+            }
+        }
+
         return new NnMaterial
         {
             PointerFlags = pointerFlags,
             Flags = BinaryPrimitives.ReadUInt32LittleEndian(data[at..]),
-            ColourOffset = BinaryPrimitives.ReadInt32LittleEndian(data[(at + 8)..]),
+            ColourOffset = colourOffset,
             StateOffset = BinaryPrimitives.ReadInt32LittleEndian(data[(at + 12)..]),
             TextureIndex = texture,
             Blend = blend,
+            Ambient = ambient,
+            Diffuse = diffuse,
         };
     }
 }
