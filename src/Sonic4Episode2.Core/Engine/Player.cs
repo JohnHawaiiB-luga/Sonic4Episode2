@@ -155,7 +155,7 @@ public sealed class Player : GameObject
     public float GroundAngle { get; private set; }
 
     public Vector2 Velocity;
-    public bool OnGround { get; private set; }
+    public bool OnGround { get; internal set; }
     public bool FacingLeft { get; private set; }
 
     /// <summary>Input for the coming frame, set by the host before stepping.</summary>
@@ -165,6 +165,10 @@ public sealed class Player : GameObject
     private bool _jumpHeld;
     private bool _cuttingJump;
     private bool _justLaunched;
+    // Only a rise that came from the jump button can be cut short. Without this
+    // a spring launch with the button up reads as a released jump and gets
+    // double gravity - springs would feel weak for an invisible reason.
+    private bool _jumpRising;
 
     private void Think()
     {
@@ -215,6 +219,7 @@ public sealed class Player : GameObject
         {
             Velocity.Y = JumpVelocity;
             _cuttingJump = false;
+            _jumpRising = true;
             Rolling = false;
         }
         _jumpHeld = InputJump;
@@ -222,8 +227,8 @@ public sealed class Player : GameObject
         // Episode II does not clamp the rise on release. It sets a flag when the
         // button comes up while still rising faster than 4 px/frame, and that flag
         // applies gravity a second time each frame until the rise ends.
-        if (!InputJump && Velocity.Y > JumpCutThreshold) _cuttingJump = true;
-        if (Velocity.Y <= 0f) _cuttingJump = false;
+        if (_jumpRising && !InputJump && Velocity.Y > JumpCutThreshold) _cuttingJump = true;
+        if (Velocity.Y <= 0f) { _cuttingJump = false; _jumpRising = false; }
 
         Velocity.Y -= Gravity;
         if (_cuttingJump) Velocity.Y -= Gravity;
@@ -425,6 +430,25 @@ public sealed class Player : GameObject
         }
 
         Position = position;
+    }
+
+    /// <summary>
+    /// Launches the player upward, the way a spring does.
+    /// </summary>
+    /// <remarks>
+    /// A launch is not a jump: it cannot be cut short by releasing the button,
+    /// it uncurls a rolling player, and it cancels a spin dash wind-up. Episode I
+    /// treats sprung flight as its own sequence state for exactly these reasons.
+    /// </remarks>
+    public void Bounce(float upwardVelocity)
+    {
+        Velocity.Y = upwardVelocity;
+        OnGround = false;
+        Rolling = false;
+        Charging = false;
+        DashPower = 0f;
+        _cuttingJump = false;
+        _jumpRising = false;
     }
 
     /// <summary>Drops the player onto the first ground below a starting point.</summary>

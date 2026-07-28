@@ -216,6 +216,23 @@ table field sits at `+0x3578 + field * 4`, which is how these were found — the
 copy routine at `0x0046AE84` compares `[esi+0x3578]` against table field 0 and
 `[esi+0x357c]` against field 1.
 
+## Springs
+
+The first object with behaviour. A spring is a trigger box that launches the
+player upward and re-arms when the player leaves it.
+
+**The impulse is Episode I's, not recovered.** Episode I launches at
+`7.5 + 1.5 * intensity` px/frame (`GMD_GMK_SPRING_SPD` 30720 FX32). Episode II's
+spring handler at `0x004F7570` was read and its reachable constants are timing
+values — no 7.5 anywhere — so its launch speed arrives some way not yet traced.
+`Springs.ImpulsePixels` carries the Episode I base, flagged like `RollThreshold`.
+
+One real bug fell out of building it: the jump-release cut used to arm on *any*
+rise, so a spring launch with the button up read as a released jump and got double
+gravity. Springs would have felt weak for an invisible reason. The cut is now
+scoped to rises that came from the jump button, and there is a test asserting a
+bounce cannot be cut.
+
 ## Not yet used
 
 Recovered and sitting in the table unused: `push_max` and the pinball row.
