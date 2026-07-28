@@ -111,12 +111,22 @@ task count, and are deliberately pessimistic.
 
 | Phase | Weight | Done | Contribution |
 |-------|-------:|-----:|-------------:|
-| 1. Asset formats | 12% | ~95% | 11.4% |
-| 2. Geometry, audio, shaders | 18% | ~99% | 17.9% |
+| 1. Asset formats *(decoding)* | 12% | ~95% | 11.4% |
+| 2. Geometry, audio, shaders *(decoding)* | 18% | ~99% | 17.9% |
 | 3. Engine port | 20% | ~96% | 19.2% |
-| 4. Game logic | 35% | ~44% | 15.4% |
+| 4. Game logic | 35% | ~45% | 15.8% |
 | 5. Mobile targets | 15% | ~35% | 5.3% |
 | **Total** | | | **≈ 70%** |
+
+**Phases 1-2 measure whether the data comes OUT of the files, and nothing else.**
+The renderer currently *uses* roughly a third of what is decoded: it draws the
+tile layers with textures and alpha through a stock unlit effect. **Rendering
+fidelity is separately ~35%** — missing the game's own shader pipeline (1,843
+shaders parsed, none executed), lighting and material state, the sky and far
+background (drawn by systems outside the tile grids, hence the black void),
+effects, the HUD, and skinned characters. Do not read the 99% as "it looks like
+the game"; it means "nothing more needs reverse engineering to make it look like
+the game".
 
 **Runnable: a playable slice.** You can run and jump on Zone 1 Act 1's real
 geometry, with collision from the stage's own attribute layer, following real

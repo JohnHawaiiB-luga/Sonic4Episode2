@@ -95,6 +95,29 @@ public sealed class GameEngine
     /// <summary>The mounted stage's dash panels.</summary>
     public DashPanels? DashPanels { get; private set; }
 
+    /// <summary>
+    /// The object id of the act start marker.
+    /// </summary>
+    /// <remarks>
+    /// Not a name — a structural identification. Across the 13 non-boss acts it
+    /// is placed exactly once per act at a mean 3% of the act's width, in the
+    /// playable band; nothing else has that shape. It is where the original game
+    /// starts the player, and where this engine now does.
+    /// </remarks>
+    public const int StartMarkerId = 443;
+
+    /// <summary>
+    /// The object id of the goal panel, identified the same way: exactly once
+    /// per act, at a mean 86% of the act's width, in 11 of 13 acts.
+    /// </summary>
+    public const int GoalPanelId = 520;
+
+    /// <summary>Where the goal panel stands, in world units, if the act has one.</summary>
+    public System.Numerics.Vector2? GoalPosition { get; private set; }
+
+    /// <summary>Whether the player has crossed the goal.</summary>
+    public bool ActClear { get; private set; }
+
     public string? StageName { get; private set; }
     public ulong Frame { get; private set; }
 
@@ -220,17 +243,30 @@ public sealed class GameEngine
                          group: SceneGroup);
         Scheduler.Create("GM_DASHPANEL", _ => CheckDashPanels(), PriorityObject,
                          group: SceneGroup);
+        Scheduler.Create("GM_GOAL", _ => CheckGoal(), PriorityObject,
+                         group: SceneGroup);
+
+        // The act's own start and goal, from their placements.
+        float scale = Assets.PlayerPhysics.WorldPerPixel;
+        Placement? start = placements.Where(p => p.ObjectId == StartMarkerId)
+                                     .Cast<Placement?>().FirstOrDefault();
+        Placement? goal = placements.Where(p => p.ObjectId == GoalPanelId)
+                                    .Cast<Placement?>().FirstOrDefault();
+        GoalPosition = goal is null ? null
+            : new System.Numerics.Vector2(goal.Value.X * scale, -goal.Value.Y * scale);
+        ActClear = false;
 
         if (Collision is not null)
         {
             Player = Objects.Add(new Player(Collision));
-            // Drop onto whatever is below rather than guessing a spawn point.
-            // The real one comes from the .EV placement data, once object ids
-            // have names attached to them.
-            float spawnX = (SpawnCellX ?? (int)(Collision.Width * 0.06f))
-                           * Collision.CellSize;
-            float spawnY = -(SpawnCellY ?? (int)(Collision.Height * 0.1f))
-                           * Collision.CellSize;
+            // The real spawn is the act's start marker; the cell overrides exist
+            // for debugging, and the fraction fallback for acts without one.
+            float spawnX = SpawnCellX is not null ? SpawnCellX.Value * Collision.CellSize
+                : start is not null ? start.Value.X * scale
+                : Collision.Width * Collision.CellSize * 0.06f;
+            float spawnY = SpawnCellY is not null ? -SpawnCellY.Value * Collision.CellSize
+                : start is not null ? -start.Value.Y * scale + Collision.CellSize
+                : -Collision.Height * Collision.CellSize * 0.1f;
             Player.PlaceOnGround(spawnX, spawnY);
         }
     }
@@ -300,6 +336,26 @@ public sealed class GameEngine
         RingCount = 0;
         Springs = null;
         DashPanels = null;
+        GoalPosition = null;
+        ActClear = false;
+    }
+
+    /// <summary>Clears the act when the player crosses the goal panel.</summary>
+    /// <remarks>
+    /// Crossing is passing the panel's X while within a screen of its height —
+    /// the same left-to-right reading the placement statistics support. Vertical
+    /// acts whose goal is elsewhere will need the real goal behaviour.
+    /// </remarks>
+    private void CheckGoal()
+    {
+        if (ActClear || GoalPosition is null || Player is null) return;
+        var goal = GoalPosition.Value;
+        if (Player.Position.X >= goal.X &&
+            MathF.Abs(Player.Position.Y - goal.Y) < 64f * Assets.PlayerPhysics.WorldPerPixel)
+        {
+            ActClear = true;
+            Status = $"ACT CLEAR - {StageName}, {RingCount} rings";
+        }
     }
 
     /// <summary>Fires a dash panel under the player.</summary>
