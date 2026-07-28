@@ -34,12 +34,28 @@ public class DashPanelTests
     }
 
     [Fact]
-    public void ABoostSetsTheEpisodeOneSpeed()
+    public void ABoostSetsTheRecoveredEpisodeTwoSpeed()
     {
+        // 13.5 is now read from Episode II's own direction table at 0x0096C658,
+        // not borrowed from Episode I - see tools/dispatch.py notes and beat 60.
         var player = Grounded();
         player.DashBoost(DashPanels.BoostPixels * PlayerPhysics.WorldPerPixel,
                          DashPanels.NoFrictionFrames);
+        Assert.Equal(13.5f, DashPanels.BoostPixels);
         Assert.Equal(13.5f * PlayerPhysics.WorldPerPixel, player.Velocity.X, precision: 4);
+    }
+
+    [Fact]
+    public void SpringDirectionsAreTheEightCompassAngles()
+    {
+        // GmGmkSpringInit indexes an A16 angle table; springs fire in eight
+        // directions, at even 45-degree steps.
+        Assert.Equal(8, Springs.DirectionAngles.Length);
+        Assert.Equal(new[] { 0, 8192, 16384, 24576, 32768, 40960, 49152, 57344 },
+                     Springs.DirectionAngles);
+        for (int i = 1; i < Springs.DirectionAngles.Length; i++)
+            Assert.Equal(8192, Springs.DirectionAngles[i] - Springs.DirectionAngles[i - 1]);
+        Assert.Equal(9.0f, Springs.VerticalSpeedCap);
     }
 
     [Fact]

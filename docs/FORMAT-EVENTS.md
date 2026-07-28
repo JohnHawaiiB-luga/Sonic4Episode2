@@ -135,16 +135,35 @@ specialised — `A` uses a single object id throughout. What selects between the
 is **OPEN**; the plausible candidates are difficulty, character or co-op mode,
 given Episode II's Tails mechanics, but this has not been established.
 
-## Still open
+## Object ids — recovered
 
-The meaning of the object ids themselves. Episode II's binary holds roughly 298
-object name strings, but they are not stored as a lookup array — each is pushed
-as an immediate inside its own object's code, so the id-to-name table can only be
-recovered by disassembly, not by reading data.
+Every id resolves to its engine class, read from the symbolized Android build's
+dispatch table (`tools/dispatch.py`, `analysis/object-names.json`). **679 of 714
+ids named; 99.8% of all 13,588 placements across the 30 acts resolve.** The base
+is anchored on two ids proven from placement statistics — id 443 is the start
+marker, id 520 the goal — and exactly one alignment puts `GmGmkStartInit` on 443
+and `GmGmkGoalPanelInit` on 520 at once. See `ObjectCatalog` and the beat-59
+handoff. The stripped Windows build could only ever guess these from nearby
+string immediates; the Android build names them outright.
 
-Episode I's decompilation cannot help here either: its `readDCFile`, `readRGFile`
-and `readEVFile` are all unimplemented stubs, so the semantics above were derived
-from Episode II's data directly.
+### Recovered gimmick constants
+
+Read from the named handlers, verified against Episode II's own bytes:
+
+| Gimmick | Constant | Value | Source |
+|---------|----------|-------|--------|
+| **Dash panel** | boost speed | **13.5 px/frame** | direction table `0x0096C658`, read by `GmPlySeqInitDashPanel` (`0x005D2254`) |
+| Dash panel | directions | right / left / up×2 / down×2, as `(±13.5, 0)`, `(0, ±13.5)` | same table, 8 entries |
+| Dash panel | no-friction window | 12 frames | **still Episode I's — not recovered** |
+| **Spring** | directions | 8 compass angles `0, 8192 … 57344` (A16) | table `0x00961D34`, indexed by `GmGmkSpringInit` (`0x00563CB0`) |
+| Spring | vertical speed cap | 9.0 px/frame | `GmPlySeqInitSpringJump` (`0x005D1520`) clamp |
+| Spring | base launch speed | 7.5 px/frame | **still Episode I's — passed as an argument, no named constant** |
+
+The dash panel's 13.5 was long flagged "Episode I's, not recovered"; it is now
+read from Episode II's own direction table, every entry of which has magnitude
+13.500. Each gimmick's *direction* is selected in its object by the placement
+record's flag byte (offset +4); the flag-to-variant bit mapping is the remaining
+open piece for both.
 
 ## Usage
 

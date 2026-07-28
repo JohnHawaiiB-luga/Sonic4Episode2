@@ -8,31 +8,39 @@ namespace Sonic4Episode2.Core.Engine;
 /// </summary>
 /// <remarks>
 /// A dash panel is a floor trigger that sets the player's ground speed to a
-/// boost value, in the direction the player is already moving, and suspends
-/// friction briefly so the boost is not immediately eaten.
+/// boost value and suspends friction briefly so the boost is not immediately
+/// eaten.
 /// <para>
-/// <b>The numbers are Episode I's, not recovered.</b> Its panel sets
-/// <c>55296</c> FX32 = <b>13.5 px/frame</b> with <c>49152</c> FX32 = <b>12
-/// frames</b> of no-friction (<c>GmPlySeqInitDashPanel</c>). Episode II *does*
-/// contain 13.5 — one <c>f32</c> and one <c>f64</c> in the whole image,
-/// referenced from player-sequence code — which corroborates without proving:
-/// the referencing code is curve arithmetic, not a plain speed store. Both
-/// values are flagged accordingly.
+/// <b>The boost is 13.5 px/frame, recovered from Episode II's own code.</b>
+/// <c>GmPlySeqInitDashPanel</c> (arm64 <c>0x005D2254</c>) indexes a table at
+/// <c>0x0096C658</c> by the panel's direction and reads a two-float velocity
+/// vector; every one of its eight populated entries has magnitude <b>13.500</b>
+/// — the same number Episode I uses, but now read rather than borrowed. The
+/// table also gives the real direction set: right, left, up (×2) and down (×2)
+/// as <c>(±13.5, 0)</c> / <c>(0, ±13.5)</c> pairs.
 /// </para>
 /// <para>
-/// Real panels are directional; the placement flags encode it and their mapping
-/// is not recovered. Boosting along the player's current travel is correct for
-/// the common case — panels are laid down the direction of play — and wrong for
-/// reverse-facing gotcha panels, which will read as boosting the wrong way and
-/// be obvious rather than subtle.
+/// The no-friction window is still Episode I's <b>12 frames</b> — it is engine
+/// timing, not in that table, and not yet traced in Episode II. Flagged.
+/// </para>
+/// <para>
+/// Direction is per-panel, selected in the object by the placement record's flag
+/// byte (offset +4), whose bit-to-direction mapping is not yet traced. Until it
+/// is, boosting along the player's current travel is correct for the common case
+/// — panels are laid down the direction of play — and a reverse-facing gotcha
+/// panel will boost the wrong way, visibly rather than subtly.
 /// </para>
 /// </remarks>
 public sealed class DashPanels
 {
-    /// <summary>Episode I's boost, game pixels per frame. Not recovered from Episode II.</summary>
+    /// <summary>
+    /// Boost in game pixels per frame. <b>Recovered from Episode II</b>:
+    /// every entry of the direction table at <c>0x0096C658</c> read by
+    /// <c>GmPlySeqInitDashPanel</c> has this magnitude.
+    /// </summary>
     public const float BoostPixels = 13.5f;
 
-    /// <summary>Episode I's friction suspension, in frames. Not recovered from Episode II.</summary>
+    /// <summary>Friction suspension, in frames. Still Episode I's — not recovered.</summary>
     public const int NoFrictionFrames = 12;
 
     /// <summary>Trigger half-extent in game pixels.</summary>

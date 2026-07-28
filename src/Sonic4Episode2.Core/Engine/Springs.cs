@@ -12,26 +12,43 @@ namespace Sonic4Episode2.Core.Engine;
 /// not re-fire until the player has left the box, which is what stops one touch
 /// reading as sixty.
 /// <para>
-/// <b>The impulse is Episode I's formula, not a recovered Episode II value.</b>
-/// Episode I launches at <c>7.5 + 1.5 * intensity</c> px/frame
-/// (<c>GMD_GMK_SPRING_SPD</c> 30720, <c>GMD_GMK_SPRING_SPDAD</c> 6144, FX32).
-/// Episode II's spring handler at <c>0x004F7570</c> was read and its reachable
-/// constants are timing values — no 7.5 anywhere in it or its callees — so its
-/// launch speed comes from somewhere not yet traced. Until it is, this uses the
-/// Episode I base with zero intensity, flagged exactly like
-/// <see cref="Player.RollThreshold"/>: plausible, oracle-shaped, and not passed
-/// off as read.
+/// <b>The impulse magnitude is still Episode I's, not recovered.</b> Episode I
+/// launches at <c>7.5 + 1.5 * intensity</c> px/frame. In Episode II the spring's
+/// touch handler passes the launch velocity into <c>GmPlySeqInitSpringJump</c>
+/// (arm64 <c>0x005D1520</c>) as arguments rather than reading a named constant,
+/// so the scalar is not a single traceable value. What <i>is</i> recovered from
+/// that sequence is the <b>vertical-velocity ceiling of 9.0</b> px/frame it
+/// clamps the result to (<c>0x41100000</c>). The base speed stays flagged.
 /// </para>
 /// <para>
-/// Direction is up-only for now. The placement flags carry 2-bit fields the spawn
-/// code reads, and until their mapping to directions is recovered, a wrong guess
-/// would fire players into walls.
+/// <b>The direction set is recovered.</b> <c>GmGmkSpringInit</c> (arm64
+/// <c>0x00563CB0</c>) reads a per-variant A16 angle table at <c>0x00961D34</c>:
+/// <c>0, 8192, 16384, 24576, 32768, 40960, 49152, 57344</c> — the eight compass
+/// directions in 65536-per-turn units (0°, 45°, 90° … 315°), with a few variants
+/// reusing 45°/315°. So springs fire in eight directions, not just up. This
+/// engine still launches straight up until the placement flag that selects the
+/// variant is wired through, which keeps a wrong guess from firing players into
+/// walls; the table it will index is now known.
 /// </para>
 /// </remarks>
 public sealed class Springs
 {
     /// <summary>Episode I's base launch speed, game pixels per frame. Not recovered from Episode II.</summary>
     public const float ImpulsePixels = 7.5f;
+
+    /// <summary>
+    /// Vertical-velocity ceiling a spring launch is clamped to, in game pixels
+    /// per frame. <b>Recovered from Episode II</b>: <c>GmPlySeqInitSpringJump</c>
+    /// caps offset <c>0xC8</c> (the player's vertical speed) at this value.
+    /// </summary>
+    public const float VerticalSpeedCap = 9.0f;
+
+    /// <summary>
+    /// Spring launch directions, A16 angles (65536 per turn), read from the table
+    /// at <c>0x00961D34</c> that <c>GmGmkSpringInit</c> indexes by variant.
+    /// </summary>
+    public static readonly int[] DirectionAngles =
+        [0, 8192, 16384, 24576, 32768, 40960, 49152, 57344];
 
     /// <summary>Trigger half-extent in game pixels — one collision cell across.</summary>
     public const float TriggerHalfPixels = 16f;
