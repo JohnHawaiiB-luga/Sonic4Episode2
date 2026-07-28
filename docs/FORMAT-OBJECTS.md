@@ -127,6 +127,33 @@ believe any body shorter than 512 bytes took it straight to 38% on the same
 search. When a boundary heuristic silently agrees with you, check what it is
 actually matching.
 
+## Where an object's model lives
+
+Gimmicks ship as **`EP2_GMK_<NAME>_MDL.AMB`**, with `_TEX` and `_MTN` archives
+beside them under the same stem. There are **65** across the build, in each
+zone's `GMK` directory and in `G_COM/GMK`.
+
+The catalogue's names and those stems are obviously the same naming scheme, and
+just as obviously not a mechanical transform:
+
+| Object name | Archive stem | Rule |
+|-------------|--------------|------|
+| `Jetwall04` | `JETWALL` | strip trailing digits |
+| `SandBranch03` | `SAND_BRANCH` | strip digits, split camel case |
+| `MetalUnit03` | `METAL_UNIT` | as above |
+| `Avalanche01` | `AVLNCH` | **abbreviated** |
+| `CandleStick` | `SCONCE` | **renamed** |
+| `SandTrank01` | `SAND_TANK` | **the game's own typo** |
+
+`ObjectModels` does the mechanical part only — strip digits, try the name, the
+`UPPER_SNAKE` form, and the underscore-free form — which resolves **8 of the 45
+recovered names**.
+
+**The abbreviated ones are deliberately left unresolved.** `AVLNCH` is very
+probably `Avalanche`, and a table of very-probablies is how bad data gets into a
+project that is careful everywhere else. They resolve when something confirms
+them, not before.
+
 ## What is still open
 
 - Ids with no name need identifying from behaviour — what they read, what they

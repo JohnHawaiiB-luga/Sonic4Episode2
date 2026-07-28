@@ -114,9 +114,9 @@ task count, and are deliberately pessimistic.
 | 1. Asset formats | 12% | ~95% | 11.4% |
 | 2. Geometry, audio, shaders | 18% | ~99% | 17.8% |
 | 3. Engine port | 20% | ~95% | 19.0% |
-| 4. Game logic | 35% | ~37% | 13.0% |
+| 4. Game logic | 35% | ~39% | 13.7% |
 | 5. Mobile targets | 15% | ~35% | 5.3% |
-| **Total** | | | **≈ 67%** |
+| **Total** | | | **≈ 68%** |
 
 **Runnable: a playable slice.** You can run and jump on Zone 1 Act 1's real
 geometry, with collision from the stage's own attribute layer, following real
