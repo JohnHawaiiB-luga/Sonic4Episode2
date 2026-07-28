@@ -153,7 +153,9 @@ advantage and I'm not going to pretend otherwise.
 | `tools/stageview.py` | assembles a whole stage from grid + models, OBJ and PNG |
 | `tools/shader.py` | D3D9 shader bytecode — parse, verify, opcode census |
 | `tools/dds.py` | DXT1/3/5 and uncompressed DDS decoding, PNG export |
+| `tools/dispatch.py` | object id → engine class, from the Android build's dispatch table |
 | `docs/` | format specifications, all marked VERIFIED / INFERRED / OPEN |
+| `docs/ORACLES.md` | the reference binaries — what a `.so` is, and how ELF cracked blockers |
 | `plans/EXECPLAN.md` | the roadmap and why the PC build was chosen |
 
 ```sh
