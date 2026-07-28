@@ -444,7 +444,33 @@ Sonic's 48-byte stride for unit length, `+28` comes out at exactly 1.0000 while
 `+12` — where a naive reader looks — gives 0.9743. Close enough to look right,
 which is the dangerous kind of wrong.
 
-### What is still missing to draw a character
+## Motion keys
+
+A motion is a set of channels — one component of one node over time — and playing
+it is sampling each channel per frame and composing the results into the node
+transforms. The channel *headers* were already parsed; the keys they point at are
+now decoded too.
+
+Keys come in two encodings, told apart by size and verified across **276,662
+channels** in the build:
+
+| Size | Layout | Used for | Verified |
+|-----:|--------|----------|----------|
+| 8 | `float frame, float value` | translation, scale | 79,570 / 79,570 monotonic |
+| 4 | `s16 frame, s16 value` (A16) | rotation | 197,092 monotonic once frame is signed |
+
+The rotation value is **A16**, 65536 to a turn — the same integer-angle
+convention as the node rotations, and the third place this format keeps an angle
+where a float reader sees garbage. The 4-byte frame is **signed**: transition
+animations begin at -5 or -10 for blend pre-roll, which is what made 846 channels
+look non-monotonic until the frame was read as `s16`.
+
+`MotionSampler.Decode` turns a channel into its keys and `Sample(frame)` evaluates
+the curve, returning radians for a rotation. Confirmed end to end on
+`SON_BRAKE01`: all 390 channels decode, and a node-2 rotation sweeps -5.8 to -53.9
+degrees over its 10 frames — a joint bending through a brake.
+
+## What is still missing to draw a character
 
 The weights say *how much* each of several matrices moves a vertex. What says
 *which* matrices is the palette that `n_mtxpal` counts — 99 of them on Sonic's 109

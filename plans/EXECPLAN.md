@@ -112,7 +112,7 @@ task count, and are deliberately pessimistic.
 | Phase | Weight | Done | Contribution |
 |-------|-------:|-----:|-------------:|
 | 1. Asset formats | 12% | ~95% | 11.4% |
-| 2. Geometry, audio, shaders | 18% | ~99% | 17.8% |
+| 2. Geometry, audio, shaders | 18% | ~99% | 17.9% |
 | 3. Engine port | 20% | ~95% | 19.0% |
 | 4. Game logic | 35% | ~40% | 14.0% |
 | 5. Mobile targets | 15% | ~35% | 5.3% |
