@@ -525,9 +525,19 @@ public sealed class StageViewerGame : Game
 
         foreach (var placement in _engine.Placements)
         {
-            string? name = ObjectCatalog.NameOf(placement.ObjectId);
-            if (name is null) continue;
-            string? archive = ObjectModels.Resolve(name, archives);
+            // Try the engine class first (679 ids carry one) then the scraped
+            // asset name (only 116, but sometimes the truer archive spelling).
+            // Resolve only returns a confirmed match, so trying both can only add
+            // correctly-resolved models, never a wrong one.
+            string? archive = null;
+            foreach (string? candidate in new[]
+                     { ObjectCatalog.ClassOf(placement.ObjectId),
+                       ObjectCatalog.NameOf(placement.ObjectId) })
+            {
+                if (candidate is null) continue;
+                archive = ObjectModels.Resolve(candidate, archives);
+                if (archive is not null) break;
+            }
             if (archive is null) continue;
 
             if (!loaded.TryGetValue(archive, out var obj))

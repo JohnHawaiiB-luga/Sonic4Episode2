@@ -28,5 +28,6 @@ libfox.so
 /analysis/*.asm
 /analysis/*.png
 /analysis/*.log
+/analysis/*.ps1
 /analysis/probe_*.py
 /analysis/sweep_*.py
