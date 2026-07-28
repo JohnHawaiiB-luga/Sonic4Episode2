@@ -76,12 +76,14 @@ public enum VertexFormat : uint
     Diffuse = 0x00008,    // 4 bytes
     Specular = 0x00010,   // 4 bytes
 
-    // Skinning weights, one float each, immediately after the position. Which
-    // bits are set says how many there are; see NnVertexList.WeightCount.
+    // Skinning, immediately after the position. Every skinned list in the build
+    // carries all three weights; the index dword is optional.
     Weight1 = 0x01000,
     Weight2 = 0x02000,
     Weight3 = 0x04000,
-    Weight4 = 0x00400,
+
+    /// <summary>Four bone indices packed one per byte, a D3D <c>UBYTE4</c>.</summary>
+    BlendIndices = 0x00400,
 
     TexCoord = 0x10000,
 }
@@ -117,26 +119,65 @@ public sealed class NnVertexList
     /// Skinning weights per vertex, zero when the list is not skinned.
     /// </summary>
     /// <remarks>
-    /// Each is one float and they sit immediately after the position, before the
-    /// normal — which is the part that is easy to get wrong, because the normal is
-    /// not where a reader assuming position-then-normal would look for it.
+    /// One float each, sitting immediately after the position and <b>before the
+    /// normal</b> — which is the part that is easy to get wrong, because the
+    /// normal is then not where a reader assuming position-then-normal looks.
     /// <para>
-    /// Verified across the build: 572 vertex lists carry weights, 395 with three
-    /// and 177 with four, and <b>96% of 93,149 sampled vertices have weights
-    /// summing to exactly 1.00</b>.
+    /// Every skinned list in the build carries exactly three. Verified: 572 lists,
+    /// and <b>96% of 112,831 sampled vertices have weights summing to 1.000</b>.
     /// </para>
     /// </remarks>
     public int WeightCount =>
         (Format.HasFlag(VertexFormat.Weight1) ? 1 : 0) +
         (Format.HasFlag(VertexFormat.Weight2) ? 1 : 0) +
-        (Format.HasFlag(VertexFormat.Weight3) ? 1 : 0) +
-        (Format.HasFlag(VertexFormat.Weight4) ? 1 : 0);
+        (Format.HasFlag(VertexFormat.Weight3) ? 1 : 0);
+
+    /// <summary>Whether this list carries packed bone indices.</summary>
+    /// <remarks>
+    /// 177 of the 572 skinned lists do. The rest carry weights alone, so their
+    /// bones must be implied by position in the mesh set's palette.
+    /// </remarks>
+    public bool HasBlendIndices => Format.HasFlag(VertexFormat.BlendIndices);
 
     /// <summary>Whether this list is skinned.</summary>
     public bool IsSkinned => WeightCount > 0;
 
     /// <summary>Byte offset of the weights within a vertex.</summary>
     public int WeightOffset => Format.HasFlag(VertexFormat.Position) ? 12 : 0;
+
+    /// <summary>Byte offset of the packed indices, or -1 when there are none.</summary>
+    public int BlendIndexOffset =>
+        HasBlendIndices ? WeightOffset + WeightCount * 4 : -1;
+
+    /// <summary>
+    /// The four bone indices of one vertex, or all zero when the list carries none.
+    /// </summary>
+    /// <remarks>
+    /// They are palette-relative, not node indices: the largest seen anywhere in
+    /// the build is <b>15</b>, against models with up to 109 nodes. What maps them
+    /// to nodes is the matrix palette, which is not decoded.
+    /// </remarks>
+    public (byte A, byte B, byte C, byte D) BlendIndices(int vertex)
+    {
+        int at = BlendIndexOffset;
+        if (at < 0 || (uint)vertex >= (uint)Count) return (0, 0, 0, 0);
+        var s = _data.Span;
+        int start = NnFile.DataBase + BufferOffset + vertex * Stride + at;
+        if (start < 0 || start + 4 > s.Length) return (0, 0, 0, 0);
+        return (s[start], s[start + 1], s[start + 2], s[start + 3]);
+    }
+
+    /// <summary>The blend weights of one vertex, in order.</summary>
+    public void ReadWeights(int vertex, Span<float> destination)
+    {
+        int n = Math.Min(WeightCount, destination.Length);
+        var s = _data.Span;
+        int start = NnFile.DataBase + BufferOffset + vertex * Stride + WeightOffset;
+        for (int i = 0; i < n; i++)
+            destination[i] = start + (i + 1) * 4 <= s.Length
+                ? BitConverter.ToSingle(s[(start + i * 4)..])
+                : 0f;
+    }
 
     public static NnVertexList Parse(ReadOnlyMemory<byte> data, int at)
     {
@@ -182,7 +223,7 @@ public sealed class NnVertexList
     [
         (VertexFormat.Position, 12),
         (VertexFormat.Weight1, 4), (VertexFormat.Weight2, 4),
-        (VertexFormat.Weight3, 4), (VertexFormat.Weight4, 4),
+        (VertexFormat.Weight3, 4), (VertexFormat.BlendIndices, 4),
         (VertexFormat.Normal, 12),
         (VertexFormat.Diffuse, 4), (VertexFormat.Specular, 4),
         (VertexFormat.TexCoord, 8),

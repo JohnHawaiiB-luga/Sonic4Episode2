@@ -412,14 +412,20 @@ stride arithmetic across all 36 distinct formats in the build gives:
 
 | Bits | Bytes | What |
 |------|------:|------|
-| `0x01000`, `0x02000`, `0x04000`, `0x00400` | 4 each | **skinning weight**, one float |
+| `0x01000`, `0x02000`, `0x04000` | 4 each | **skinning weight**, one float |
+| `0x00400` | 4 | **blend indices**, four packed bytes |
 | `0x00040` + `0x00100` | 24 together | undecoded; always co-occur |
 | `0x20000` | 16 | undecoded |
 
-The weight reading is confirmed directly rather than by arithmetic. Sonic's first
-vertex reads `0.012, 0.988, 0.000, 0.000` — **summing to exactly 1** — and across
-the build **572 vertex lists carry weights**, 395 with three and 177 with four,
-with **96% of 93,149 sampled vertices summing to 1.00**.
+Read directly rather than inferred. Sonic's first vertex reads
+`0.0122, 0.9878, 0.0000` — **summing to exactly 1** — followed by the dword
+`00000100`, which is the four bytes `0, 1, 0, 0`. Across the build **all 572
+skinned lists carry exactly three weights**, 177 of them also carry the index
+dword, **96% of 112,831 sampled vertices sum to 1.000**, and **all 53,941 index
+sets are valid with a largest byte of 15**.
+
+That matches the shaders exactly: `v1` is a three-float weight, `v2` a `UBYTE4`
+index. The fourth weight is implicit — three summing to one leaves nothing for it.
 
 **They sit between the position and the normal**, which matters more than it
 sounds. The component order in a vertex is not the order of the format bits, and
