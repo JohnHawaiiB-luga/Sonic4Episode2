@@ -43,6 +43,86 @@ public static class ObjectModels
     }
 
     /// <summary>
+    /// Whether an archive stem is an abbreviation of an object name.
+    /// </summary>
+    /// <remarks>
+    /// True when the stem's letters appear in the name in order —
+    /// <c>AVLNCH</c> inside <c>AVALANCHE</c>, <c>SANDTANK</c> inside
+    /// <c>SANDTRANK</c>. It is deliberately strict about order, which is what
+    /// makes it reject the renames: <c>SCONCE</c> is not a subsequence of
+    /// <c>CANDLESTICK</c>, and a rule that accepted it would accept anything.
+    /// <para>
+    /// On its own this is suggestive, not proof. It is only used together with
+    /// the zone check — see <see cref="Resolve"/>.
+    /// </para>
+    /// </remarks>
+    public static bool IsAbbreviationOf(string stem, string name)
+    {
+        string s = Letters(stem), n = Letters(name);
+        if (s.Length == 0 || s.Length > n.Length) return false;
+
+        // An abbreviation drops letters; it does not drop half the word. Without
+        // this, WATER matches WaterSlider — and WATER is the water surface, a
+        // different object entirely.
+        if (s.Length * 100 < n.Length * MinimumCoveragePercent) return false;
+
+        int at = 0;
+        foreach (char c in n)
+            if (at < s.Length && s[at] == c) at++;
+        return at == s.Length;
+    }
+
+    /// <summary>
+    /// How much of a name an abbreviation has to keep to count as one.
+    /// </summary>
+    /// <remarks>
+    /// 60% keeps <c>AVLNCH</c> for <c>Avalanche</c> (67%) and <c>SAND_TANK</c>
+    /// for <c>SandTrank</c> (89%), and rejects <c>WATER</c> for
+    /// <c>WaterSlider</c> (45%), which is a different object.
+    /// </remarks>
+    public const int MinimumCoveragePercent = 60;
+
+    /// <summary>
+    /// Picks the archive for an object out of the ones actually available.
+    /// </summary>
+    /// <remarks>
+    /// Exact stems win outright. Otherwise an abbreviation is accepted **only if
+    /// exactly one candidate is an abbreviation of the name** — two would mean
+    /// the evidence does not distinguish them, and the right answer then is to
+    /// resolve nothing rather than to guess between them.
+    /// </remarks>
+    public static string? Resolve(string name, IEnumerable<string> archivePaths)
+    {
+        var stems = CandidateStems(name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var paths = archivePaths.ToArray();
+
+        foreach (string path in paths)
+            if (stems.Contains(StemOf(path)))
+                return path;
+
+        var abbreviated = paths.Where(p => IsAbbreviationOf(StemOf(p), name)).ToArray();
+        return abbreviated.Length == 1 ? abbreviated[0] : null;
+    }
+
+    /// <summary>The <c>NAME</c> out of <c>.../EP2_GMK_NAME_MDL.AMB</c>.</summary>
+    public static string StemOf(string archivePath)
+    {
+        string file = archivePath[(archivePath.LastIndexOf('/') + 1)..];
+        if (!file.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase) ||
+            !file.EndsWith(Suffix, StringComparison.OrdinalIgnoreCase))
+            return "";
+        return file[Prefix.Length..^Suffix.Length].ToUpperInvariant();
+    }
+
+    private static string Letters(string value)
+    {
+        var sb = new System.Text.StringBuilder(value.Length);
+        foreach (char c in value)
+            if (char.IsLetter(c)) sb.Append(char.ToUpperInvariant(c));
+        return sb.ToString();
+    }
+
+    /// <summary>
     /// The model archive for an object, or null when nothing matches.
     /// </summary>
     /// <param name="name">A catalogue name, e.g. <c>Jetwall04</c>.</param>

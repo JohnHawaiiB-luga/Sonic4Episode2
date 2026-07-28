@@ -149,10 +149,32 @@ just as obviously not a mechanical transform:
 `UPPER_SNAKE` form, and the underscore-free form — which resolves **8 of the 45
 recovered names**.
 
-**The abbreviated ones are deliberately left unresolved.** `AVLNCH` is very
-probably `Avalanche`, and a table of very-probablies is how bad data gets into a
-project that is careful everywhere else. They resolve when something confirms
-them, not before.
+### Closing the abbreviations with evidence rather than a table
+
+Two independent signals agree, so the abbreviations resolve without anyone
+writing down a guess:
+
+1. **Zone.** The archives are zone-scoped — `AVLNCH` ships only in `G_ZONE2`, and
+   `Avalanche02`'s 71 placements are all in `G_ZONE2`. `SAND_TANK` ships only in
+   `G_ZONE3`, where `SandTrank01` is placed.
+2. **Letters.** The stem's letters appear in the name **in order**: `A-V-L-N-C-H`
+   inside `AVALANCHE`, `SANDTANK` inside `SANDTRANK`.
+
+The ordering requirement is what makes this safe rather than convenient. `SCONCE`
+really is `CandleStick`'s archive and the letter rule **rejects** it, which is
+correct: nothing about those two words justifies the link, and a rule loose enough
+to accept it would accept anything.
+
+Two further guards:
+
+- An abbreviation must keep **60% of the name's letters**. Without that, `WATER`
+  matches `WaterSlider` — and `WATER` is the water surface, a different object.
+- When **two** candidates qualify, nothing resolves. Ambiguity is a reason to pick
+  neither, not to pick one.
+
+That takes resolution to **11 of 45** names: 8 exact and 3 abbreviated
+(`Avalanche01`, `Avalanche02`, `SandTrank01`). The rest are genuine renames like
+`SCONCE` and `NEEDLE`, and they stay open until something identifies them.
 
 ## What is still open
 
