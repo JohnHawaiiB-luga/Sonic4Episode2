@@ -21,3 +21,12 @@ obj/
 /analysis/libfox-symbols.txt
 /analysis/*.so
 libfox.so
+
+# Session working files under analysis/: oracle disassembly, one-off probe
+# scripts, captures and logs. The committed .json files there are recovered
+# data and stay tracked.
+/analysis/*.asm
+/analysis/*.png
+/analysis/*.log
+/analysis/probe_*.py
+/analysis/sweep_*.py

@@ -12,9 +12,17 @@ namespace Sonic4Episode2.Core.Assets;
 /// static rendering and animation stand on.
 /// <para>
 /// Local transform is scale, then rotation, then translation, with rotation
-/// applied Z then Y then X — the order SEGA's NN library uses and the one Episode
-/// I's node evaluation follows. Angles come out of
-/// <see cref="NnNode.RotationRadians"/>.
+/// applied <b>X then Y then Z</b>. The order field (<c>flags &amp; 0xF00</c>) is
+/// zero — XYZ — on every node in the build, and the data settles the order
+/// beyond doubt: composing <c>SON_SPINMODEL</c>'s bind chain XYZ and multiplying
+/// by each node's stored inverse bind gives identity to 3e-6, while every other
+/// order fails by 1.0 or worse. An earlier version of this file rotated ZYX and
+/// looked right, because rigid gimmicks rotate about a single axis.
+/// </para>
+/// <para>
+/// Flag bits 0-2 declare the stored translation / rotation / scale identity, and
+/// the engine skips the component without reading it — <c>SON_MODEL</c> carries
+/// non-identity bytes under set flags, so honoring them is not optional.
 /// </para>
 /// </remarks>
 public static class NodeTransforms
@@ -22,12 +30,20 @@ public static class NodeTransforms
     /// <summary>The local transform of a single node.</summary>
     public static Matrix4x4 Local(NnNode node)
     {
-        var (rx, ry, rz) = node.RotationRadians;
-        return Matrix4x4.CreateScale(node.ScaleX, node.ScaleY, node.ScaleZ)
-             * Matrix4x4.CreateRotationZ(rz)
-             * Matrix4x4.CreateRotationY(ry)
-             * Matrix4x4.CreateRotationX(rx)
-             * Matrix4x4.CreateTranslation(node.TranslateX, node.TranslateY, node.TranslateZ);
+        var m = Matrix4x4.Identity;
+        if ((node.Flags & NnNode.UnitTranslation) == 0)
+            m = Matrix4x4.CreateTranslation(node.TranslateX, node.TranslateY, node.TranslateZ);
+        if ((node.Flags & NnNode.UnitRotation) == 0)
+        {
+            var (rx, ry, rz) = node.RotationRadians;
+            m = Matrix4x4.CreateRotationX(rx)
+              * Matrix4x4.CreateRotationY(ry)
+              * Matrix4x4.CreateRotationZ(rz)
+              * m;
+        }
+        if ((node.Flags & NnNode.UnitScaling) == 0)
+            m = Matrix4x4.CreateScale(node.ScaleX, node.ScaleY, node.ScaleZ) * m;
+        return m;
     }
 
     /// <summary>

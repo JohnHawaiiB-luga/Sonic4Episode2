@@ -14,8 +14,8 @@ namespace Sonic4Episode2.Core.Assets;
 /// <para>
 /// It handles rigid models completely: a mesh set bound to a single node draws
 /// with that node's world matrix, which covers every gimmick whose parts each
-/// ride one node — jet walls, springs, propellers. A skinned model needs the
-/// matrix palette on top of this, which is not decoded.
+/// ride one node — jet walls, springs, propellers. A skinned model feeds these
+/// same world matrices through <see cref="MatrixPalette.Build"/> instead.
 /// </para>
 /// </remarks>
 public static class AnimatedPose
@@ -30,17 +30,30 @@ public static class AnimatedPose
                                     IReadOnlyList<MotionSampler> channels,
                                     float frame)
     {
-        // Start from each node's bind-pose local components.
+        // Start from each node's bind-pose local components. A unit flag means
+        // the stored bytes are unread by the engine and can be garbage, so the
+        // seed is identity — a channel override still lands on top of it.
         var t = new Vector3[nodes.Count];
         var r = new Vector3[nodes.Count];
         var s = new Vector3[nodes.Count];
         for (int i = 0; i < nodes.Count; i++)
         {
             var n = nodes[i];
-            t[i] = new Vector3(n.TranslateX, n.TranslateY, n.TranslateZ);
-            var (rx, ry, rz) = n.RotationRadians;
-            r[i] = new Vector3(rx, ry, rz);
-            s[i] = new Vector3(n.ScaleX, n.ScaleY, n.ScaleZ);
+            t[i] = (n.Flags & NnNode.UnitTranslation) != 0
+                ? Vector3.Zero
+                : new Vector3(n.TranslateX, n.TranslateY, n.TranslateZ);
+            if ((n.Flags & NnNode.UnitRotation) != 0)
+            {
+                r[i] = Vector3.Zero;
+            }
+            else
+            {
+                var (rx, ry, rz) = n.RotationRadians;
+                r[i] = new Vector3(rx, ry, rz);
+            }
+            s[i] = (n.Flags & NnNode.UnitScaling) != 0
+                ? Vector3.One
+                : new Vector3(n.ScaleX, n.ScaleY, n.ScaleZ);
         }
 
         // Override the components a channel animates.
@@ -62,15 +75,16 @@ public static class AnimatedPose
             }
         }
 
-        // Compose and walk the tree, same order as the static case.
+        // Compose and walk the tree, same order as the static case: rotation
+        // X then Y then Z, the order the data proves (see NodeTransforms).
         var world = new Matrix4x4[nodes.Count];
         var resolved = new bool[nodes.Count];
         for (int i = 0; i < nodes.Count; i++)
         {
             var local = Matrix4x4.CreateScale(s[i])
-                      * Matrix4x4.CreateRotationZ(r[i].Z)
-                      * Matrix4x4.CreateRotationY(r[i].Y)
                       * Matrix4x4.CreateRotationX(r[i].X)
+                      * Matrix4x4.CreateRotationY(r[i].Y)
+                      * Matrix4x4.CreateRotationZ(r[i].Z)
                       * Matrix4x4.CreateTranslation(t[i]);
             int parent = nodes[i].Parent;
             world[i] = parent >= 0 && parent < nodes.Count && resolved[parent]

@@ -96,7 +96,8 @@ public sealed class NnVertexList
     private readonly ReadOnlyMemory<byte> _data;
 
     private NnVertexList(ReadOnlyMemory<byte> data, uint format, uint unknown,
-                         int stride, int count, int bufferOffset)
+                         int stride, int count, int bufferOffset,
+                         int[] matrixIndices)
     {
         _data = data;
         Format = (VertexFormat)format;
@@ -104,16 +105,32 @@ public sealed class NnVertexList
         Stride = stride;
         Count = count;
         BufferOffset = bufferOffset;
+        MatrixIndices = matrixIndices;
     }
 
     public VertexFormat Format { get; }
 
-    /// <summary>Resolves near the descriptor itself; meaning unknown.</summary>
+    /// <summary>A secondary format word, mirroring the blend-index bit.</summary>
     public uint Unknown { get; }
 
     public int Stride { get; }
     public int Count { get; }
     public int BufferOffset { get; }
+
+    /// <summary>
+    /// The bone subset this list draws with: palette slots, in blend-index order.
+    /// </summary>
+    /// <remarks>
+    /// The count sits at descriptor <c>+0x14</c> and the slot array behind the
+    /// pointer at <c>+0x18</c> — the D3D9 shape of the <c>nMatrix</c> /
+    /// <c>pMatrixIndices</c> pair Episode I's GL descriptor carries. A vertex's
+    /// <c>UBYTE4</c> blend index selects into this list, and the list holds the
+    /// global palette slot. Never longer than 16 (the shader's register budget);
+    /// lists with weights but no per-vertex indices never exceed 4, so their
+    /// implied indices are 0..3. Verified across every weighted list in the
+    /// build: all 750 in range, max 16.
+    /// </remarks>
+    public IReadOnlyList<int> MatrixIndices { get; }
 
     /// <summary>
     /// Skinning weights per vertex, zero when the list is not skinned.
@@ -182,12 +199,28 @@ public sealed class NnVertexList
     public static NnVertexList Parse(ReadOnlyMemory<byte> data, int at)
     {
         var s = data.Span;
+        int[] matrixIndices = [];
+        if (at + 0x1C <= s.Length)
+        {
+            int matrixCount = BinaryPrimitives.ReadInt32LittleEndian(s[(at + 0x14)..]);
+            int matrixOffset = BinaryPrimitives.ReadInt32LittleEndian(s[(at + 0x18)..]);
+            int target = NnFile.DataBase + matrixOffset;
+            if (matrixCount is > 0 and <= 16 && matrixOffset > 0 &&
+                target + matrixCount * 4 <= s.Length)
+            {
+                matrixIndices = new int[matrixCount];
+                for (int i = 0; i < matrixCount; i++)
+                    matrixIndices[i] =
+                        BinaryPrimitives.ReadInt32LittleEndian(s[(target + i * 4)..]);
+            }
+        }
         return new NnVertexList(data,
             BinaryPrimitives.ReadUInt32LittleEndian(s[at..]),
             BinaryPrimitives.ReadUInt32LittleEndian(s[(at + 4)..]),
             BinaryPrimitives.ReadInt32LittleEndian(s[(at + 8)..]),
             BinaryPrimitives.ReadInt32LittleEndian(s[(at + 12)..]),
-            BinaryPrimitives.ReadInt32LittleEndian(s[(at + 16)..]));
+            BinaryPrimitives.ReadInt32LittleEndian(s[(at + 16)..]),
+            matrixIndices);
     }
 
     /// <summary>
@@ -352,6 +385,17 @@ public sealed record NnMeshSet(
 /// <b>144 bytes, where Episode I's <c>NNS_NODE</c> is 112.</b> Verified by
 /// walking the tree on all 846 multi-node models: links in range, exactly one
 /// root each, finite non-zero scales.
+/// <para>
+/// The 64 bytes at <c>+0x30</c> are the inverse bind matrix, recovered from
+/// <c>nnCalcMatrixPaletteNode</c> in the symbolized Android build and verified
+/// against this build's data: composing each node's bind world from its TRS
+/// chain and multiplying by these bytes yields identity to 3e-6 on
+/// <c>SON_SPINMODEL</c>'s whole skeleton. The flag bits carry Episode I's
+/// <c>NND_NODETYPE_*</c> meanings: bits 0-2 declare the stored translation /
+/// rotation / scale as identity (the engine skips the component without reading
+/// it), bit 3 declares the inverse bind as identity (the palette copies the
+/// world matrix untouched).
+/// </para>
 /// </remarks>
 public sealed record NnNode(
     uint Flags, short MatrixIndex, short Parent, short Child, short Sibling,
@@ -360,6 +404,21 @@ public sealed record NnNode(
     float ScaleX, float ScaleY, float ScaleZ)
 {
     public const int Size = 0x90;
+
+    // NND_NODETYPE_* bits, named in Episode I's source and honored by the
+    // palette walker in the Android build.
+    public const uint UnitTranslation = 0x1;
+    public const uint UnitRotation = 0x2;
+    public const uint UnitScaling = 0x4;
+    public const uint UnitInitMatrix = 0x8;
+    public const uint RotateOrderMask = 0xF00;   // 0 = XYZ, the only value shipped
+
+    /// <summary>Inverse bind matrix, row-major as stored.</summary>
+    public System.Numerics.Matrix4x4 InverseBind { get; init; } =
+        System.Numerics.Matrix4x4.Identity;
+
+    /// <summary>Whether the palette should take the world matrix untouched.</summary>
+    public bool HasUnitInverseBind => (Flags & UnitInitMatrix) != 0;
 
     /// <summary>
     /// Rotation units in a full turn. Angles are stored as signed integers, not
@@ -387,7 +446,14 @@ public sealed record NnNode(
         Le.I16(data, at + 0x08), Le.I16(data, at + 0x0A),
         Le.F32(data, at + 0x0C), Le.F32(data, at + 0x10), Le.F32(data, at + 0x14),
         Le.I32(data, at + 0x18), Le.I32(data, at + 0x1C), Le.I32(data, at + 0x20),
-        Le.F32(data, at + 0x24), Le.F32(data, at + 0x28), Le.F32(data, at + 0x2C));
+        Le.F32(data, at + 0x24), Le.F32(data, at + 0x28), Le.F32(data, at + 0x2C))
+    {
+        InverseBind = new System.Numerics.Matrix4x4(
+            Le.F32(data, at + 0x30), Le.F32(data, at + 0x34), Le.F32(data, at + 0x38), Le.F32(data, at + 0x3C),
+            Le.F32(data, at + 0x40), Le.F32(data, at + 0x44), Le.F32(data, at + 0x48), Le.F32(data, at + 0x4C),
+            Le.F32(data, at + 0x50), Le.F32(data, at + 0x54), Le.F32(data, at + 0x58), Le.F32(data, at + 0x5C),
+            Le.F32(data, at + 0x60), Le.F32(data, at + 0x64), Le.F32(data, at + 0x68), Le.F32(data, at + 0x6C)),
+    };
 }
 
 /// <summary>A material, and the texture it selects.</summary>

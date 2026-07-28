@@ -110,6 +110,24 @@ public sealed class TileMesh
     public static TileMesh From(NnModel model) => Build(model, worldMatrices: null);
 
     /// <summary>
+    /// The model's geometry skinned by the matrix palette — a posed frame of a
+    /// skeletal animation.
+    /// </summary>
+    /// <remarks>
+    /// Each vertex of a weighted list blends up to four palette matrices: the
+    /// stored weights (the last is one minus their sum), blend indices into the
+    /// list's <see cref="NnVertexList.MatrixIndices"/> bone subset, and the
+    /// palette built by <see cref="MatrixPalette.Build"/> from
+    /// <paramref name="worldMatrices"/>. A list with weights but no per-vertex
+    /// indices uses implied indices 0..3 — such lists never carry more than four
+    /// bones anywhere in the build. Rigid mesh sets in the same model ride their
+    /// node's world matrix, as in <see cref="Posed"/>.
+    /// </remarks>
+    public static TileMesh Skinned(NnModel model, IReadOnlyList<Matrix4x4> worldMatrices) =>
+        Build(model, worldMatrices,
+              MatrixPalette.Build(model.Nodes, worldMatrices, model.Header.MatrixPaletteCount));
+
+    /// <summary>
     /// The model's geometry with each mesh set transformed by its node's world
     /// matrix — a posed frame of a rigid animation.
     /// </summary>
@@ -123,7 +141,8 @@ public sealed class TileMesh
     public static TileMesh Posed(NnModel model, IReadOnlyList<Matrix4x4> worldMatrices) =>
         Build(model, worldMatrices);
 
-    private static TileMesh Build(NnModel model, IReadOnlyList<Matrix4x4>? worldMatrices)
+    private static TileMesh Build(NnModel model, IReadOnlyList<Matrix4x4>? worldMatrices,
+                                  Matrix4x4[]? palette = null)
     {
         var positions = new List<float>();
         var texCoords = new List<float>();
@@ -147,16 +166,45 @@ public sealed class TileMesh
             var uvBuffer = new float[vertexList.Count * 2];
             bool hasUv = vertexList.ReadTexCoords(uvBuffer);
 
-            // Posed: ride the node's world matrix. Still: re-centre on the bbox,
-            // the behaviour From has always had.
-            bool posed = worldMatrices is not null &&
+            // Skinned: blend palette matrices per vertex. Posed: ride the node's
+            // world matrix. Still: re-centre on the bbox, the behaviour From has
+            // always had.
+            bool skinned = palette is not null && vertexList.IsSkinned &&
+                           vertexList.MatrixIndices.Count > 0;
+            bool posed = !skinned && worldMatrices is not null &&
                          mesh.NodeIndex >= 0 && mesh.NodeIndex < worldMatrices.Count;
             Matrix4x4 transform = posed ? worldMatrices![mesh.NodeIndex] : Matrix4x4.Identity;
 
+            Span<float> weights = stackalloc float[4];
+            Span<byte> bones = stackalloc byte[4];
             for (int i = 0; i < vertexList.Count; i++)
             {
                 float x = buffer[i * 3 + 0], y = buffer[i * 3 + 1], z = buffer[i * 3 + 2];
-                if (posed)
+                if (skinned)
+                {
+                    int stored = vertexList.WeightCount;
+                    vertexList.ReadWeights(i, weights);
+                    float sum = 0f;
+                    for (int k = 0; k < stored; k++) sum += weights[k];
+                    weights[stored] = 1f - sum;
+
+                    (bones[0], bones[1], bones[2], bones[3]) = vertexList.BlendIndices(i);
+                    var source = new Vector3(x, y, z);
+                    var v = Vector3.Zero;
+                    for (int k = 0; k <= stored; k++)
+                    {
+                        if (weights[k] == 0f) continue;
+                        int bone = vertexList.HasBlendIndices ? bones[k] : k;
+                        if (bone >= vertexList.MatrixIndices.Count) continue;
+                        int slot = vertexList.MatrixIndices[bone];
+                        if (slot < 0 || slot >= palette!.Length) continue;
+                        v += weights[k] * Vector3.Transform(source, palette[slot]);
+                    }
+                    positions.Add(v.X);
+                    positions.Add(v.Y);
+                    positions.Add(v.Z);
+                }
+                else if (posed)
                 {
                     var v = Vector3.Transform(new Vector3(x, y, z), transform);
                     positions.Add(v.X);

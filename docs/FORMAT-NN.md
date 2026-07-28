@@ -165,10 +165,21 @@ word is the offset of the actual descriptor.
 | Offset | Type | Field |
 |--------|------|-------|
 | `0x00` | `u32` | format flags |
-| `0x04` | `u32` | unknown — resolves near the descriptor itself, **OPEN** |
+| `0x04` | `u32` | secondary format word — mirrors the blend-index bit (`0x111A` with, `0x11A` without); exact meaning open |
 | `0x08` | `u32` | stride in bytes |
 | `0x0C` | `u32` | vertex count |
 | `0x10` | `u32` | vertex buffer offset |
+| `0x14` | `s32` | **bone count** for this list (`nMatrix`), 0 on rigid lists |
+| `0x18` | `u32` | **pointer to the bone subset** (`pMatrixIndices`): `nMatrix` palette slots, present only when skinned |
+
+The `+0x14`/`+0x18` pair is the D3D9 shape of Episode I's GL descriptor
+`nMatrix` / `pMatrixIndices`. A vertex's `UBYTE4` blend index selects into this
+per-list array, and the array holds the **global palette slot** — the indirection
+the "index-to-node table" question further down was looking for. **VERIFIED**
+across every weighted list in the build (`analysis/sweep_palette.py`): 750 lists,
+all bone counts in `(0, 16]`, every slot in `[0, n_mtxpal)`, and lists with
+weights but no per-vertex indices never exceed 4 (so their implied indices are
+`0..3`).
 
 Format flags are a bitfield. Each combination accounts for its stride exactly,
 which is how the bits were identified across 2,700 vertex lists:
@@ -179,11 +190,14 @@ which is how the bits were identified across 2,700 vertex lists:
 | `0x00002` | normal | 12 |
 | `0x00008` | diffuse colour | 4 |
 | `0x00010` | specular colour | 4 |
+| `0x00400` | blend indices (`UBYTE4`) | 4 |
+| `0x01000`/`0x02000`/`0x04000` | blend weights | 4 each |
 | `0x10000` | texture coordinate | 8 |
 
-`0x10003` → 32 bytes, `0x1001b` → 40, `0x10019` → 28, `0x10001` → 20. Bits
-`0x40`/`0x100` appear on wider strides (56, 64) and are presumably blend weights
-and indices for skinning; not yet confirmed.
+`0x10003` → 32 bytes, `0x1001b` → 40, `0x10019` → 28, `0x10001` → 20. Sonic's
+`0x17403` → 48: position 12, three weights 12, indices 4, normal 12, texcoord 8.
+**The weights and indices sit between the position and the normal**, so a reader
+that assumes position-then-normal puts every later attribute at the wrong offset.
 
 Position, when present, is always at offset 0 within the vertex.
 
@@ -262,8 +276,15 @@ origin.
 | `0x0C` | `float[3]` | translation |
 | `0x18` | `s32[3]` | rotation, fixed-point angles |
 | `0x24` | `float[3]` | scaling |
-| `0x30` | `float[16]` | inverse bind matrix |
+| `0x30` | `float[16]` | inverse bind matrix (**confirmed**, see below) |
 | `0x70` | 32 bytes | unknown, zero in every observed model |
+
+The type-flags field at `+0x00` carries Episode I's `NND_NODETYPE_*` bits, and
+the palette walker honours them: bit `0x1`/`0x2`/`0x4` declare the stored
+translation / rotation / scale as **identity** (the engine skips the component
+without reading the bytes, which on `SON_MODEL` are non-identity under a set
+flag), and bit `0x8` declares the inverse bind as identity. The rotation-order
+field (`0x0F00`) is `0` — XYZ — on every one of the build's 12,444 nodes.
 
 **144 bytes, where Episode I's `NNS_NODE` is 112** — the second size divergence,
 after the mesh set. Verified by walking the tree on all **846 multi-node models**:
@@ -388,22 +409,44 @@ rigid single-node props.
 eighteen mesh sets, which is the marker for **palette skinning**: the vertices are
 weighted across several matrices rather than riding one node.
 
-### Why that stops short of drawing Sonic
+### Posing a skinned model — the matrix palette (SOLVED)
 
 His geometry is authored in a **centred model space** — raw positions span y -5.82
 to 5.82 — while his posed skeleton stands from **0 to 10.73**. The two are not the
-same space, and the five nodes his meshes bind to (104 to 108) all sit at the
-origin, one exactly identity and two carrying a **-16384 rotation about X**, which
-is a clean -90 degrees and the usual Y-up/Z-up axis conversion.
+same space, which is why multiplying his vertices by `world[NodeIndex]` would
+double-transform them. What bridges the two is the matrix palette, and it is now
+recovered — read from `nnCalcMatrixPaletteNode` (`0x0060FB94`) in the symbolized
+Android build and verified against Episode II's own data. The algorithm is:
 
-So multiplying his vertices by `world[NodeIndex]` would not pose him, it would
-double-transform them. Posing a skinned model needs the matrix palette that
-`n_mtxpal` counts, plus the blend indices and weights in the vertex format —
-neither of which is decoded yet. **That is what stands between this project and a
-Sonic on screen**, and it is a discrete piece of work rather than a loose end.
+- **The palette is computed, not stored.** The header's `n_mtxpal` is a slot
+  count with no offset because nothing is serialised — the engine walks the node
+  tree at draw time and writes one slot per node whose `MatrixIndex` (`+0x04`) is
+  not `-1`:
+
+  ```
+  palette[node.MatrixIndex] = node.InverseBind · node.world
+  ```
+
+  in row-vector order — the inverse bind carries a vertex from bind space into
+  bone-local space, the world matrix carries it back out through the current
+  pose. A node flagged `NND_NODETYPE_UNIT_INIT_MATRIX` (`0x8`) copies its world
+  matrix untouched.
+- **A vertex does not index the palette directly.** Its `UBYTE4` blend index
+  (`v2` in the shaders) selects into the vertex list's own bone subset at
+  descriptor `+0x18`, and *that* holds the global palette slot. Lists carrying
+  weights but no per-vertex indices use implied indices `0..3`.
+
+**The proof is a single property.** At the bind pose every palette slot must come
+out identity, because each is `InverseBind · bindWorld` and the two are inverses
+by construction. Composing `SON_SPINMODEL`'s whole skeleton XYZ and building the
+palette yields identity to **3e-6**; every other rotation order fails by ≥1.0.
+That one check pins the inverse-bind offset (`+0x30`), the XYZ order, the
+multiplication order and the unit flags simultaneously. Implemented in
+`MatrixPalette.Build` and `TileMesh.Skinned`; a real Sonic now renders in the
+desktop viewer, posed and animated by the locomotion motions.
 
 Rigid models — anything with one node, or with meshes bound to a node that carries
-a real transform — can be posed with what is here today.
+a real transform — pose with the same node walk and no palette.
 
 ### Skinning weights, and a bug they exposed
 
@@ -482,37 +525,22 @@ hierarchy. It animates any rigid model completely. Verified on the real gimmicks
 a jet wall's node moves **20 units** through its animation, read straight from the
 game's own files.
 
-## What is still missing to draw a character
+## Drawing a character — the matrix palette (SOLVED)
 
 The weights say *how much* each of several matrices moves a vertex. What says
-*which* matrices is the palette that `n_mtxpal` counts — 99 of them on Sonic's 109
-nodes — and it is **not decoded**.
+*which* matrices is the palette that `n_mtxpal` counts — 99 of them on Sonic's
+109 nodes. The full chain is now recovered; the algorithm is in the "Posing a
+skinned model" section above, and this section records the two things that made
+it hard: **where the per-list bone subset lives** (the vertex descriptor, not a
+subobject field) and **that the palette is never serialised** (the engine
+computes it from the node tree each draw).
 
-The object header counts palettes but carries no offset for them, so they live
-inside a subobject. A subobject is 20 bytes and only three of its five dwords are
-read: flags, mesh count, mesh offset. The remaining two are the obvious candidates.
+### What the shaders said, and what confirmed it
 
-**A lead that does not hold up, recorded so nobody spends the afternoon on it
-twice.** On Sonic those two dwords read `5` and `0x1062C`, and `0x1062C` holds
-`0, 1, 2, 3, 4` immediately before the subobject record — exactly what a count and
-a palette of node indices should look like. Across the build it falls apart:
-
-| Check | Result |
-|-------|--------|
-| Palette offset lands inside the file | 4,955/4,955 |
-| Subobject counts sum to the header's `n_mtxpal` | **1,371/3,546** |
-| Palette entries index a valid node | **5,378/10,080** |
-
-Two of three are near chance. So either the palette is somewhere else, or those
-dwords mean something else and Sonic's `0,1,2,3,4` is a coincidence of a
-five-element array of small numbers.
-
-### What the shaders say
-
-The game's own vertex shaders settle the *shape* of the skinning, even though the
-palette's storage is still open. Walking all 1,843 shaders for **relative
-addressing on a constant register** — the unmistakable marker of palette skinning
-— finds **126 vertex shaders that use it**.
+The game's own vertex shaders settled the *shape* of the skinning before the
+storage was found. Walking all 1,843 shaders for **relative addressing on a
+constant register** — the marker of palette skinning — finds **126 vertex
+shaders that use it**.
 
 One of them, `...RDMRC00000020.VSH` (`vs_3_0`), reads:
 
@@ -525,36 +553,33 @@ mad   r1, c[a0.x + 3], v1, r1
 dp4   r0, v0, r1             ; against the position
 ```
 
-So:
+So **`v0` is position, `v1` the blend weights, `v2` the blend indices**; a bone
+is four constant registers `c[a0.x + 0..3]`; the index is scaled by `c75` (four
+registers per bone) before use; and the highest register runs to c142,
+consistent with a large palette. All of this is exactly what
+`nnCalcMatrixPaletteNode` builds and `SsDrawObjectMatrixPalette` uploads, from
+the horse's mouth in the symbolized build — the shader is the consumer, the
+named function the producer, and they agree.
 
-- **`v0` is the position, `v1` the blend weights, `v2` the blend indices.**
-- A bone is **four constant registers**, indexed `c[a0.x + 0..3]`.
-- The index is scaled by `c75` before use, which is how a bone number becomes a
-  register offset.
-- Highest constant register across the skinning shaders runs to **c142**, so the
-  palette is large — consistent with `n_mtxpal` being 99 on Sonic.
+The one confusion the shader created — it reads indices from `v2` while the
+48-byte stride looked like position + 3 weights + normal + texcoord with no
+room for them — was a stride-arithmetic error: the weights and indices sit
+**between position and normal**, so the format is position 12, *weights 12,
+indices 4*, normal 12, texcoord 8, which is the full 48. Once the vertex layout
+was read correctly the index register had its source.
 
-**The open question is now narrow and specific.** The vertex carries weights and,
-by the stride arithmetic, nothing else — 48 bytes on Sonic is exactly position 12,
-weights 16, normal 12, texture coordinates 8. Yet the shader reads indices from a
-separate input register. Either the indices are packed into those same 16 bytes
-alongside the weights, or the declaration feeds `v2` from somewhere the stride
-does not account for.
+### Two dead leads, kept as the record of what the palette was NOT
 
-Both were settled by reading the bytes — see the weights and indices above. What
-remains is only the **index-to-node table**.
+Both cost time; recorded so nobody re-checks them. The palette is not stored in
+either place because it is not stored at all.
 
-### Ruling things out for the palette
-
-Two candidates checked and eliminated, recorded so they are not checked twice:
-
-- **Mesh set `+0x24`** is a plain sequential ordinal. On Sonic's eighteen mesh
-  sets it reads `0 1 2 ... 17` exactly, so it identifies the mesh set and points
-  at nothing.
+- **Mesh set `+0x24`** is a plain sequential ordinal — `0 1 2 … 17` on Sonic's
+  eighteen mesh sets — so it identifies the mesh set and points at nothing.
 - **The subobject's trailing dwords** give `5` and an offset to `0, 1, 2, 3, 4`
-  sitting immediately before the subobject record. That cannot be the palette for
-  vertices whose indices reach **15**, and across the build the counts fail to sum
-  to the header's `n_mtxpal` on 2,175 of 3,546 models.
+  before the subobject record. That cannot be a palette for vertices whose
+  indices reach **15**, and across the build the counts fail to sum to
+  `n_mtxpal` on 2,175 of 3,546 models. The real per-list subset is the
+  descriptor's `+0x14`/`+0x18` pair, which passes on all 750 weighted lists.
 
 There are also **no static `D3DVERTEXELEMENT9` arrays** in `Sonic.exe` — a search
 for the `D3DDECL_END()` sentinel finds zero — so declarations are built at

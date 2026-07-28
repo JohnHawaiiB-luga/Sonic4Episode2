@@ -235,6 +235,7 @@ public sealed class StageViewerGame : Game
         LoadTextures(_actArchive);
         LoadRingModel();
         LoadObjectModels();
+        LoadPlayerModel();
         LoadBackground();
         if (_pending is not null)
         {
@@ -277,6 +278,165 @@ public sealed class StageViewerGame : Game
             GraphicsDevice.DrawUserIndexedPrimitives(
                 PrimitiveType.TriangleList, corners, 0, 4, indices, 0, 2);
         }
+    }
+
+    /// <summary>A player mesh and the motion driving it.</summary>
+    private sealed record PlayerMotion(
+        IReadOnlyList<MotionSampler> Channels, float Start, float End);
+
+    private NnModel? _playerModel;          // SON_MODEL, the full skeleton
+    private NnModel? _playerBallModel;      // SON_SPINMODEL, the rolled-up ball
+    private readonly Dictionary<string, PlayerMotion> _playerMotions = [];
+    private string _playerMotionName = "";
+    private float _playerFrame;
+
+    /// <summary>
+    /// Loads Sonic's skinned model, ball model, textures and the handful of
+    /// locomotion motions the viewer can drive from player state.
+    /// </summary>
+    /// <remarks>
+    /// This is what the matrix palette was recovered for: the model's 99 palette
+    /// slots and per-vertex-list bone subsets go through
+    /// <see cref="MatrixPalette.Build"/> and <see cref="TileMesh.Skinned"/> every
+    /// frame. Anything missing leaves the flat marker in place.
+    /// </remarks>
+    private void LoadPlayerModel()
+    {
+        try
+        {
+            var models = AmbArchive.Parse(_content.Read("G_COM/PLY/SON_MDL.AMB"));
+            foreach (var entry in models.Entries)
+            {
+                if (entry.Name.EndsWith("SON_MODEL.ZNO", StringComparison.OrdinalIgnoreCase))
+                    _playerModel = NnModel.Load(models.Read(entry));
+                else if (entry.Name.EndsWith("SON_SPINMODEL.ZNO", StringComparison.OrdinalIgnoreCase))
+                    _playerBallModel = NnModel.Load(models.Read(entry));
+            }
+            if (_playerModel is null) return;
+
+            LoadTexturesFrom("G_COM/PLY/SON_TEX.AMB");
+
+            var motions = AmbArchive.Parse(_content.Read("G_COM/PLY/SON_MTN.AMB"));
+            foreach (string name in (string[])
+                     ["SON_FWWAIT0_01", "SON_WALK", "SON_FW", "SON_RUN", "SON_SPIN01"])
+            {
+                foreach (var entry in motions.Entries)
+                {
+                    if (!entry.Name.EndsWith(name + ".ZNM", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var raw = motions.Read(entry);
+                    var motion = NnFile.Parse(raw).ReadMotion();
+                    if (motion is null) break;
+                    var (header, channels) = motion.Value;
+                    var samplers = new List<MotionSampler>();
+                    foreach (var channel in channels)
+                    {
+                        var sampler = MotionSampler.Decode(channel, raw.Span);
+                        if (sampler is not null) samplers.Add(sampler);
+                    }
+                    _playerMotions[name] = new PlayerMotion(samplers, header.Start, header.End);
+                    break;
+                }
+            }
+            Console.WriteLine($"player model loaded: {_playerModel.Nodes.Count} nodes, " +
+                              $"{_playerModel.Header.MatrixPaletteCount} palette slots, " +
+                              $"{_playerMotions.Count} motions");
+        }
+        catch (Exception ex) when (ex is AmbException or NnException or DdsException)
+        {
+            _playerModel = null;    // the marker quad still draws
+        }
+    }
+
+    /// <summary>Which motion the player's state asks for right now.</summary>
+    private string DesiredPlayerMotion()
+    {
+        var player = _engine.Player!;
+        if (player.Rolling || player.Charging || !player.OnGround) return "SON_SPIN01";
+        float speed = MathF.Abs(player.Velocity.X);
+        if (speed < 0.05f) return "SON_FWWAIT0_01";
+        return speed < player.MaxSpeed * 0.85f ? "SON_WALK" : "SON_RUN";
+    }
+
+    /// <summary>
+    /// The player as the game's own skinned model, posed by state.
+    /// </summary>
+    /// <remarks>
+    /// The ball states use <c>SON_SPINMODEL</c>; everything else skins
+    /// <c>SON_MODEL</c>. The model is authored in world units with its feet at
+    /// the origin facing +Z, so it rotates a quarter turn about Y toward travel
+    /// and translates to the player's position — no scale involved.
+    /// </remarks>
+    private void DrawPlayer()
+    {
+        if (_engine.Player is null || !_followPlayer) return;
+        var motionName = _playerModel is null ? "" : DesiredPlayerMotion();
+        bool ball = motionName == "SON_SPIN01";
+        var model = ball ? _playerBallModel : _playerModel;
+        if (model is null || !_playerMotions.TryGetValue(motionName, out var motion))
+        {
+            DrawPlayerMarker();
+            return;
+        }
+
+        if (motionName != _playerMotionName)
+        {
+            _playerMotionName = motionName;
+            _playerFrame = motion.Start;
+        }
+        _playerFrame += 1f;
+        float span = MathF.Max(motion.End - motion.Start, 1f);
+        float frame = motion.Start + ((_playerFrame - motion.Start) % span);
+
+        var world = AnimatedPose.World(model.Nodes, motion.Channels, frame);
+        var mesh = TileMesh.Skinned(model, world);
+
+        var player = _engine.Player;
+        float yaw = player.FacingLeft ? -MathF.Tau / 4f : MathF.Tau / 4f;
+        var pose = System.Numerics.Matrix4x4.CreateRotationY(yaw) *
+                   System.Numerics.Matrix4x4.CreateTranslation(
+                       player.Position.X, player.Position.Y, 400f);
+
+        var vertices = new VertexPositionNormalTexture[mesh.Positions.Length / 3];
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            var p = System.Numerics.Vector3.Transform(new System.Numerics.Vector3(
+                mesh.Positions[i * 3], mesh.Positions[i * 3 + 1],
+                mesh.Positions[i * 3 + 2]), pose);
+            vertices[i] = new VertexPositionNormalTexture(
+                new Vector3(p.X, p.Y, p.Z), Vector3.Backward,
+                new Vector2(mesh.TexCoords[i * 2], 1f - mesh.TexCoords[i * 2 + 1]));
+        }
+
+        // Group triangles by texture, the same shape StageBatch produces.
+        var groups = new Dictionary<string, List<int>>();
+        for (int t = 0; t < mesh.TriangleTextures.Length; t++)
+        {
+            string key = mesh.TriangleTextures[t] ?? "";
+            if (mesh.TriangleBlends[t] == MaterialBlend.Additive)
+                key = StageBatch.AdditivePrefix + key;
+            if (!groups.TryGetValue(key, out var list)) groups[key] = list = [];
+            list.Add(mesh.Indices[t * 3]);
+            list.Add(mesh.Indices[t * 3 + 1]);
+            list.Add(mesh.Indices[t * 3 + 2]);
+        }
+
+        foreach (var pair in groups)
+        {
+            SetBlend(pair.Key);
+            _effect.Texture = _textures.TryGetValue(
+                StageBatch.TextureOf(pair.Key).ToUpperInvariant(), out var t)
+                ? t : _white;
+            var indices = pair.Value;
+            foreach (var pass in _effect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                GraphicsDevice.DrawUserIndexedPrimitives(
+                    PrimitiveType.TriangleList, vertices, 0, vertices.Length,
+                    [.. indices], 0, indices.Count / 3);
+            }
+        }
+        GraphicsDevice.BlendState = BlendState.AlphaBlend;
     }
 
     /// <summary>
@@ -938,7 +1098,7 @@ public sealed class StageViewerGame : Game
         }
         DrawObjects();
         DrawRings();
-        DrawPlayerMarker();
+        DrawPlayer();
         base.Draw(gameTime);
 
         if (ScreenshotPath is not null && ++_frames >= ScreenshotFrame)
