@@ -25,6 +25,15 @@ namespace Sonic4Episode2.Core.Assets;
 /// integer where a float would be assumed. See <see cref="NnNode"/>.
 /// </para>
 /// </remarks>
+/// <summary>The node component a motion channel drives.</summary>
+public enum MotionComponent
+{
+    None,
+    TranslateX, TranslateY, TranslateZ,
+    RotateX, RotateY, RotateZ,
+    ScaleX, ScaleY, ScaleZ,
+}
+
 public sealed class MotionSampler
 {
     /// <summary>Low-byte tag of a packed A16 rotation channel.</summary>
@@ -33,13 +42,42 @@ public sealed class MotionSampler
     private readonly float[] _frames;
     private readonly float[] _values;
 
-    private MotionSampler(int target, bool isRotation, float[] frames, float[] values)
+    private MotionSampler(uint type, int target, bool isRotation,
+                          float[] frames, float[] values)
     {
+        Type = type;
         Target = target;
         IsRotation = isRotation;
         _frames = frames;
         _values = values;
     }
+
+    /// <summary>The channel type flags, whose high bits pick the component.</summary>
+    public uint Type { get; }
+
+    /// <summary>
+    /// Which node component this channel drives.
+    /// </summary>
+    /// <remarks>
+    /// The high bits of the type select it, in three triples: translation at
+    /// <c>0x0100/0x0200/0x0400</c>, rotation at <c>0x0800/0x1000/0x2000</c>, scale
+    /// at <c>0x8000/0x10000/0x20000</c>. Read off Sonic's channels and confirmed
+    /// by value: the scale triple is a constant 1.0 where translation ranges
+    /// freely.
+    /// </remarks>
+    public MotionComponent Component => (Type & 0xFFFFFF00) switch
+    {
+        0x0100 => MotionComponent.TranslateX,
+        0x0200 => MotionComponent.TranslateY,
+        0x0400 => MotionComponent.TranslateZ,
+        0x0800 => MotionComponent.RotateX,
+        0x1000 => MotionComponent.RotateY,
+        0x2000 => MotionComponent.RotateZ,
+        0x8000 => MotionComponent.ScaleX,
+        0x10000 => MotionComponent.ScaleY,
+        0x20000 => MotionComponent.ScaleZ,
+        _ => MotionComponent.None,
+    };
 
     /// <summary>The node this channel drives.</summary>
     public int Target { get; }
@@ -81,7 +119,7 @@ public sealed class MotionSampler
                 values[i] = BinaryPrimitives.ReadInt16LittleEndian(data[(k + 2)..]);
             }
         }
-        return new MotionSampler(channel.Target, rotation, frames, values);
+        return new MotionSampler(channel.Flags, channel.Target, rotation, frames, values);
     }
 
     /// <summary>

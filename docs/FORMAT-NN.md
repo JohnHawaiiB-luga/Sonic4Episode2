@@ -470,6 +470,18 @@ the curve, returning radians for a rotation. Confirmed end to end on
 `SON_BRAKE01`: all 390 channels decode, and a node-2 rotation sweeps -5.8 to -53.9
 degrees over its 10 frames — a joint bending through a brake.
 
+A channel's **component** comes from the high bits of its type, in three triples:
+translation `0x0100/0x0200/0x0400`, rotation `0x0800/0x1000/0x2000`, scale
+`0x8000/0x10000/0x20000`. Which float triple is translation and which is scale was
+settled by value: the scale channels are a constant 1.0 where translation ranges
+freely.
+
+`AnimatedPose.World` composes a motion onto a node tree — overriding the
+components a channel drives, leaving the rest at bind pose, then walking the
+hierarchy. It animates any rigid model completely. Verified on the real gimmicks:
+a jet wall's node moves **20 units** through its animation, read straight from the
+game's own files.
+
 ## What is still missing to draw a character
 
 The weights say *how much* each of several matrices moves a vertex. What says
