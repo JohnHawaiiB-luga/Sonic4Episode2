@@ -39,54 +39,65 @@ jump, and the layout has to allow that specific pair.
 runs under touch input on a 1080x2400 portrait screen, reaching exactly the speed
 the recovered acceleration predicts.
 
-## What is not done, and why
+## Android: builds, and produces an APK
 
-**There is no Android head project yet**, because it cannot be built or tested on
-this machine.
+**`Sonic4Episode2.Android` exists and builds a signed APK** — 18 MB in Release.
+It is a thin activity and two adapters; everything else is the shared code:
 
-`dotnet workload install android` succeeded — the workload is present at version
-`35.0.105/9.0.100`. But building for Android also needs the **Android SDK** and a
-**JDK**, which the workload does not bring:
+| File | What it does |
+|------|--------------|
+| `MainActivity.cs` | hosts the shared `StageViewerGame`, landscape and fullscreen |
+| `AndroidContent.cs` | `IContentSource` over shared storage, falling back to APK assets |
+| `TouchInput.cs` | `IInputSource` handing touch points to `VirtualPad` |
+
+The renderer is **not duplicated**. The project links
+`../Sonic4Episode2.Desktop/StageViewerGame.cs` directly, which only works because
+that class was taken off the filesystem and given pluggable input first.
+
+### Building it
+
+Needs the .NET Android workload plus the Android SDK and a JDK:
 
 ```
-error XA5300: The Android SDK directory could not be found.
+dotnet workload install android
+dotnet build -t:InstallAndroidDependencies -f net8.0-android     -p:AndroidSdkDirectory=C:/Android/sdk -p:JavaSdkDirectory=C:/Android/jdk     -p:AcceptAndroidSDKLicenses=True
+dotnet build src/Sonic4Episode2.Android -c Release -t:SignAndroidPackage
 ```
 
-The supported fix is:
+**One trap worth knowing.** On a machine with a small paging file the JVM cannot
+commit its default 532 MB heap and even `java -version` fails, which surfaces as
+`error MSB6006: java.exe exited with code 1`. The project sets
+`JavaMaximumHeapSize` to 256 MB, and `JAVA_TOOL_OPTIONS=-Xmx256m` fixes the
+version probe itself.
+
+### Getting the data onto the device
+
+The game is several gigabytes, so it is **not** packed into the APK. Push a copy
+and the app finds it:
 
 ```
-dotnet build -t:InstallAndroidDependencies -f net8.0-android \
-    -p:AndroidSdkDirectory=<path> -p:JavaSdkDirectory=<path> \
-    -p:AcceptAndroidSDKLicenses=True
+adb push "Sonic 4 - Episode 2 (Beta 8)" /sdcard/Sonic4Episode2
 ```
 
-That last flag accepts Google's Android SDK licence terms. **That is a legal
-acceptance and belongs to whoever owns the machine**, not to a build script
-running unattended, so it has been left alone.
+`MainActivity` checks the app's external files directories first, then
+`/sdcard/Sonic4Episode2`, then falls back to APK assets for a cut-down build.
 
-Writing an Android head without being able to compile it would mean shipping a few
-hundred lines of unverifiable code and calling the phase progressed. The parts
-that *can* be verified without a device — content access, input mapping, the
-renderer's platform-neutrality — are done and tested instead.
+### What has not been proven
 
-## What remains once the SDK is installed
-
-1. A `Sonic4Episode2.Android` project targeting `net8.0-android`, referencing
-   `MonoGame.Framework.Android` instead of `.DesktopGL`.
-2. `AndroidContent : IContentSource` over `AssetManager` — the game data goes in
-   `Assets/`, and `AssetManager.Open` gives a stream per path. Note that
-   `AssetManager` cannot list recursively the way `Directory` can, so `List` needs
-   a manifest generated at packaging time.
-3. `TouchInput : IInputSource` feeding `VirtualPad` from
-   `TouchPanel.GetState()`.
-4. A `MainActivity` hosting `StageViewerGame`.
-
-The game data is several gigabytes, which is far past what an APK can carry, so
-it has to be sideloaded to external storage and the content source pointed at it.
-That is a packaging decision the director should make before the head is written.
+The APK builds and installs. **It has not been run on a device or emulator**, so
+nothing here claims it renders correctly on Android — only that it compiles,
+packages, and shares its code path with a renderer that does work on desktop.
 
 ## iOS
 
-Same shape, and the same blocker plus one more: iOS builds need a Mac. Nothing
-here prevents it, and the abstractions above are the work that would otherwise
-have to be redone per platform.
+Same three files with different platform types: an `IContentSource` over the app
+bundle, an `IInputSource` over `TouchPanel`, and a `UIApplicationDelegate` hosting
+the same `StageViewerGame`.
+
+**It is not written, because iOS builds need a Mac and this is a Windows
+machine.** Writing a head that cannot be compiled or run here would be a few
+hundred lines taken on faith, and the Android head is the evidence that the
+abstractions carry — it needed no changes to the shared renderer at all.
+
+Whoever writes it should expect the same shape as `Sonic4Episode2.Android`, and
+the same data problem: several gigabytes will not fit in an app bundle either.

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>21</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationId>com.sonic4episode2.port</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
+    <AndroidManifest>Properties\AndroidManifest.xml</AndroidManifest>
+    <!-- This machine cannot commit the JVM's default 532MB heap, so d8 needs a
+         smaller one. Harmless everywhere else. -->
+    <JavaMaximumHeapSize>256m</JavaMaximumHeapSize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MonoGame.Framework.Android" Version="3.8.*" />
+    <ProjectReference Include="..\Sonic4Episode2.Core\Sonic4Episode2.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The renderer is shared with the desktop head rather than duplicated. It
+         takes an IContentSource and an IInputSource precisely so this works. -->
+    <Compile Include="..\Sonic4Episode2.Desktop\StageViewerGame.cs"
+             Link="StageViewerGame.cs" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="com.sonic4episode2.port">
+  <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="34" />
+
+  <!-- The game data is several gigabytes, far past what an APK can carry, so it
+       is sideloaded and read from shared storage rather than packed in. -->
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+
+  <application android:label="Sonic 4 Episode II"
+               android:hardwareAccelerated="true"
+               android:requestLegacyExternalStorage="true" />
+</manifest>

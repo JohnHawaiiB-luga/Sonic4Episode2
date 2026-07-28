@@ -115,8 +115,8 @@ task count, and are deliberately pessimistic.
 | 2. Geometry, audio, shaders | 18% | ~99% | 17.8% |
 | 3. Engine port | 20% | ~94% | 18.8% |
 | 4. Game logic | 35% | ~37% | 13.0% |
-| 5. Mobile targets | 15% | ~12% | 1.8% |
-| **Total** | | | **≈ 66%** |
+| 5. Mobile targets | 15% | ~35% | 5.3% |
+| **Total** | | | **≈ 69%** |
 
 **Runnable: a playable slice.** You can run and jump on Zone 1 Act 1's real
 geometry, with collision from the stage's own attribute layer, following real
@@ -230,8 +230,8 @@ Gate: Zone 1 Act 1 playable start to finish.
       driving a real stage**
 - [x] Make the renderer platform-neutral - **`StageViewerGame` takes an
       `IContentSource` and an `IInputSource`**
-- [ ] MonoGame Android and iOS heads - **blocked on the Android SDK, which needs
-      a licence acceptance that is the director's to give; see `docs/MOBILE.md`**
+- [x] MonoGame Android head - **builds a signed APK; not yet run on a device**
+- [ ] iOS head - needs a Mac to build at all
 - [ ] Performance and memory work against the 1.2 GB data set
 
 ## Standing constraints
