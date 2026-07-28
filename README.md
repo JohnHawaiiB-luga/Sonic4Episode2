@@ -130,8 +130,16 @@ bug and none was:
 - **Cut-out textures drew as black silhouettes.** The foliage, railings and
   tracery all carry alpha and the renderer was not blending. One line.
 
-Still missing: lighting, the game's own 1,843 shaders (parsed, unused), objects,
-and a character model where that blue sliver is.
+![White Park in the viewer](docs/images/viewer-zone2act1.png)
+
+*Zone 2's White Park in the same viewer — snow slopes, ice pillars, decorated
+pines, snowmen. The small dark objects spaced down the big slope are 71 placed
+`Avalanche02` objects, drawn from their own model archive at the positions the
+`.EV` file gives them. Only objects whose name provably maps to an archive are
+drawn; the rest are absent rather than guessed.*
+
+Still missing: lighting, the game's own 1,843 shaders (parsed, unused), most
+objects, and a character model where that blue sliver is.
 
 # What the collision actually looks like
 

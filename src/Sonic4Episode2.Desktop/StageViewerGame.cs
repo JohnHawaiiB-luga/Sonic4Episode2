@@ -39,6 +39,9 @@ public sealed class StageViewerGame : Game
     private Texture2D _marker = null!;
     private Texture2D _ring = null!;
     private TileMesh? _ringMesh;
+    private VertexPositionNormalTexture[] _objectVertices = [];
+    private readonly Dictionary<string, int[]> _objectBatches = [];
+    private int _objectInstances;
     private VertexPositionNormalTexture[] _ringVertices = [];
     private readonly Dictionary<string, int[]> _ringBatches = [];
     private int _ringsBuiltFor = -1;
@@ -227,6 +230,7 @@ public sealed class StageViewerGame : Game
 
         LoadTextures(_actArchive);
         LoadRingModel();
+        LoadObjectModels();
         if (_pending is not null)
         {
             BuildBuffers(_pending);
@@ -317,6 +321,133 @@ public sealed class StageViewerGame : Game
             // Without the model the flat markers still draw, so this is a
             // downgrade rather than a failure.
             _ringMesh = null;
+        }
+    }
+
+    /// <summary>
+    /// Instances a model at every placement whose object resolves to one.
+    /// </summary>
+    /// <remarks>
+    /// Only 11 of the 45 recovered object names resolve to an archive so far, so
+    /// this draws springs, jet walls and their kin and leaves the rest as
+    /// nothing — honestly absent rather than guessed at. The batch is built once:
+    /// placements do not move.
+    /// <para>
+    /// Placement anchors are unknown, so each model sits centred on its
+    /// placement point. Wrong for objects anchored at their base, but visibly so,
+    /// which is what a first pass should be.
+    /// </para>
+    /// </remarks>
+    private void LoadObjectModels()
+    {
+        int cut = _actArchive.IndexOf('/');
+        string zone = cut < 0 ? "" : _actArchive[..cut];
+        string[] roots = [$"{zone}/GMK", "G_COM/GMK"];
+        var archives = roots.SelectMany(r => _content.List(r, "_MDL.AMB")).ToArray();
+
+        var meshes = new Dictionary<string, TileMesh?>();
+        var batch = new StageBatch();
+        _objectInstances = 0;
+
+        foreach (var placement in _engine.Placements)
+        {
+            string? name = ObjectCatalog.NameOf(placement.ObjectId);
+            if (name is null) continue;
+            string? archive = ObjectModels.Resolve(name, archives);
+            if (archive is null) continue;
+
+            if (!meshes.TryGetValue(archive, out var mesh))
+            {
+                mesh = LoadFirstModel(archive);
+                meshes[archive] = mesh;
+                if (mesh is not null)
+                    LoadTexturesFrom(ObjectModels.TexturesFor(archive));
+            }
+            if (mesh is null) continue;
+
+            float scale = PlayerPhysics.WorldPerPixel;
+            batch.Add(mesh, placement.X * scale, -placement.Y * scale, 385f);
+            _objectInstances++;
+        }
+
+        _objectVertices = new VertexPositionNormalTexture[batch.VertexCount];
+        for (int i = 0; i < _objectVertices.Length; i++)
+        {
+            _objectVertices[i] = new VertexPositionNormalTexture(
+                new Vector3(batch.Positions[i * 3],
+                            batch.Positions[i * 3 + 1],
+                            batch.Positions[i * 3 + 2]),
+                Vector3.Backward,
+                new Vector2(batch.TexCoords[i * 2], 1f - batch.TexCoords[i * 2 + 1]));
+        }
+        foreach (var pair in batch.IndicesByTexture)
+            _objectBatches[pair.Key] = [.. pair.Value];
+
+        Console.WriteLine($"{_objectInstances} object models placed " +
+                          $"({meshes.Count(m => m.Value is not null)} distinct)");
+    }
+
+    /// <summary>The first drawable model in an archive, or null.</summary>
+    private TileMesh? LoadFirstModel(string archivePath)
+    {
+        try
+        {
+            var archive = AmbArchive.Parse(_content.Read(archivePath));
+            foreach (var entry in archive.Entries)
+            {
+                if (!entry.Name.EndsWith(".ZNO", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var model = NnModel.Load(archive.Read(entry));
+                if (model is null || model.MeshSets.Count == 0) continue;
+                return TileMesh.From(model);
+            }
+        }
+        catch (Exception ex) when (ex is AmbException or NnException) { }
+        return null;
+    }
+
+    /// <summary>Uploads every texture in an archive that is not already loaded.</summary>
+    private void LoadTexturesFrom(string archivePath)
+    {
+        if (!_content.Exists(archivePath)) return;
+        try
+        {
+            var archive = AmbArchive.Parse(_content.Read(archivePath));
+            foreach (var entry in archive.Entries)
+            {
+                if (!entry.Name.EndsWith(".DDS", StringComparison.OrdinalIgnoreCase)) continue;
+                string label = entry.Name.Replace((char)92, '/');
+                label = label[(label.LastIndexOf('/') + 1)..].ToUpperInvariant();
+                if (_textures.ContainsKey(label)) continue;
+                try
+                {
+                    var decoded = DdsTexture.Parse(archive.Read(entry).Span);
+                    var texture = new Texture2D(GraphicsDevice, decoded.Width, decoded.Height);
+                    texture.SetData(decoded.Pixels);
+                    _textures[label] = texture;
+                }
+                catch (Exception ex) when (ex is DdsException or ArgumentException) { }
+            }
+        }
+        catch (AmbException) { }
+    }
+
+    /// <summary>Draws the placed object models.</summary>
+    private void DrawObjects()
+    {
+        if (_objectVertices.Length == 0) return;
+        foreach (var pair in _objectBatches)
+        {
+            _effect.Texture = _textures.TryGetValue(pair.Key.ToUpperInvariant(), out var t)
+                ? t : _white;
+            foreach (var pass in _effect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                GraphicsDevice.DrawUserIndexedPrimitives(
+                    PrimitiveType.TriangleList,
+                    _objectVertices, 0, _objectVertices.Length,
+                    pair.Value, 0, pair.Value.Length / 3);
+            }
         }
     }
 
@@ -564,6 +695,7 @@ public sealed class StageViewerGame : Game
                 }
             }
         }
+        DrawObjects();
         DrawRings();
         DrawPlayerMarker();
         base.Draw(gameTime);
