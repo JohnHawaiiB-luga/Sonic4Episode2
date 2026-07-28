@@ -165,6 +165,36 @@ read from Episode II's own direction table, every entry of which has magnitude
 record's flag byte (offset +4); the flag-to-variant bit mapping is the remaining
 open piece for both.
 
+### Item boxes (monitors) — the `Item` class
+
+`GmGmkItemInit` (`0x00539460`) recovers the box's base item type from the object
+id through two jump tables and a config array:
+
+- ids `64-67` index the table at `0x00960778` by `id - 64`; ids `454-462` index
+  `0x0096077C` by `id - 454`; ids `566-567` and `63`/`458` fall through to a
+  default. Each yields a small type index `w8 ∈ {0..5}`.
+- `w8` indexes the word table at `0x009607A0` = `[2, 3, 4, 1, 5, 6]`, giving the
+  box's base config value.
+
+The five effects it grants exist and are **named** in Episode II —
+`GmPlayerItemHiSpeedSet` (`0x005A7CE8`), `GmPlayerItemInvincibleSet`
+(`0x005A7D80`), `GmPlayerItemRing10Set` (`0x005A7E50`), `GmPlayerItemBarrierSet`
+(`0x005A7E88`), `GmPlayerItem1UPSet` (`0x005A7F38`) — matching Episode I's
+`GmGmkItem.cs` (speed, invincible, 10 rings, shield, 1-UP).
+
+**Two things are OPEN**, and both are why the engine breaks boxes but grants
+nothing yet:
+
+1. **The config value is refined at runtime** (`GmGmkItemInit` `0x00539600`-`…20`)
+   by save/game state — co-op mode and whether Super is available change what a
+   box shows — so the id alone does not fix the effect.
+2. **The effect is applied player-side through a vtable/pointer dispatch** that
+   carries no direct `BL` or `ADRP+ADD` reference to the five functions, so the
+   config-value-to-effect mapping is not yet read from Episode II's own code.
+
+Guessing that mapping would be exactly the kind of borrowed-from-Episode-I value
+this project flags; it is left OPEN until Episode II's dispatch is traced.
+
 ## Usage
 
 ```sh

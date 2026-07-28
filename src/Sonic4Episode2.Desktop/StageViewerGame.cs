@@ -567,11 +567,27 @@ public sealed class StageViewerGame : Game
     /// at the frame; models without a motion stay at rest. Called once at load for
     /// a static act, and every frame for an animated one.
     /// </remarks>
+    private int _itemBoxesRemaining = -1;
+
     private void BuildObjectBuffers(float frame)
     {
+        // A broken item box stops being drawn. Positions match exactly: the
+        // viewer and ItemBoxes derive world coordinates the same way.
+        var broken = new HashSet<(float, float)>();
+        var boxes = _engine.ItemBoxes;
+        if (boxes is not null)
+            for (int i = 0; i < boxes.Count; i++)
+                if (boxes.IsBroken(i))
+                {
+                    var p = boxes.PositionOf(i);
+                    broken.Add((p.X, p.Y));
+                }
+        _itemBoxesRemaining = boxes?.Remaining ?? -1;
+
         var batch = new StageBatch();
         foreach (var (obj, x, y) in _objectPlacements)
         {
+            if (broken.Contains((x, y))) continue;
             TileMesh mesh = obj.Rest!;
             if (obj.Model is not null && obj.Channels.Count > 0)
             {
@@ -991,9 +1007,12 @@ public sealed class StageViewerGame : Game
 
         // Play the object animations by rebuilding their posed geometry each
         // frame. Only when something actually animates, so a static act pays
-        // nothing.
+        // nothing. A box breaking also forces one rebuild so it stops drawing,
+        // even on a stage where nothing else moves.
         if (_objectsAnimate)
             BuildObjectBuffers((float)gameTime.TotalGameTime.TotalSeconds * 30f);
+        else if (_engine.ItemBoxes is { } boxes && boxes.Remaining != _itemBoxesRemaining)
+            BuildObjectBuffers(0f);
 
         var keyboard = Keyboard.GetState();
         if (keyboard.IsKeyDown(Keys.Escape)) Exit();

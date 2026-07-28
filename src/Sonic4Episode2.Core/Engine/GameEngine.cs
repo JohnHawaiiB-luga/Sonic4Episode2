@@ -95,6 +95,9 @@ public sealed class GameEngine
     /// <summary>The mounted stage's dash panels.</summary>
     public DashPanels? DashPanels { get; private set; }
 
+    /// <summary>The mounted stage's item boxes.</summary>
+    public ItemBoxes? ItemBoxes { get; private set; }
+
     /// <summary>
     /// The object id of the act start marker.
     /// </summary>
@@ -226,6 +229,7 @@ public sealed class GameEngine
         RingCount = 0;
         Springs = new Springs(placements);
         DashPanels = new DashPanels(placements);
+        ItemBoxes = new ItemBoxes(placements);
         StageName = NameOf(actPath);
         // Report what the placements actually became. A behaviour wired to the
         // wrong object id spawns nothing and looks identical to one that works,
@@ -235,7 +239,7 @@ public sealed class GameEngine
                  $"{batch.TriangleCount:N0} triangles, " +
                  $"{layers} layers, {identified}/{placements.Count} placements identified, " +
                  $"{Springs.Count} springs, {DashPanels.Count} dash panels, " +
-                 $"{rings.Count} rings" +
+                 $"{ItemBoxes.Count} item boxes, {rings.Count} rings" +
                  (Collision?.HasShapes == true ? ", height fields" : ", blocky collision") +
                  (Collision?.HasAngles == true ? " with angles" : "");
 
@@ -249,6 +253,8 @@ public sealed class GameEngine
         Scheduler.Create("GM_SPRING", _ => CheckSprings(), PriorityObject,
                          group: SceneGroup);
         Scheduler.Create("GM_DASHPANEL", _ => CheckDashPanels(), PriorityObject,
+                         group: SceneGroup);
+        Scheduler.Create("GM_ITEM", _ => CheckItemBoxes(), PriorityObject,
                          group: SceneGroup);
         Scheduler.Create("GM_GOAL", _ => CheckGoal(), PriorityObject,
                          group: SceneGroup);
@@ -382,6 +388,14 @@ public sealed class GameEngine
         float? impulse = Springs.Check(new System.Numerics.Vector2(
             Player.Position.X, Player.Position.Y));
         if (impulse is not null) Player.Bounce(impulse.Value);
+    }
+
+    /// <summary>Breaks any item box the player is touching.</summary>
+    private void CheckItemBoxes()
+    {
+        if (ItemBoxes is null || Player is null) return;
+        ItemBoxes.Check(new System.Numerics.Vector2(
+            Player.Position.X, Player.Position.Y));
     }
 
     /// <summary>Hands the player any ring it is standing in.</summary>
