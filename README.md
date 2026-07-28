@@ -145,8 +145,15 @@ gimmicks placed and **animated**. Each spins from its own model and motion
 archive, posed per frame by composing the animation onto the model's node tree.
 Rigid objects animate today; skinned characters wait on the matrix palette.*
 
-Still missing: lighting, the game's own 1,843 shaders (parsed, unused), and a
-character model where that blue sliver is.
+![Zone 1 with its sky](docs/images/viewer-zone1-sky.png)
+
+*The same act with its **far background** drawn — the zone's own sky, clouds and
+distant castle scenery from the nested `MAPFAR` archive, parallaxed behind the
+level. That black void in the earlier shots was simply the sky not being loaded;
+it is loaded now.*
+
+Still missing: lighting, the game's own 1,843 shaders (parsed, unused), proper
+background placement, and a character model where that blue sliver is.
 
 # What the collision actually looks like
 

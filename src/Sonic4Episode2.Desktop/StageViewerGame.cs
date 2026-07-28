@@ -42,6 +42,9 @@ public sealed class StageViewerGame : Game
     private VertexPositionNormalTexture[] _objectVertices = [];
     private readonly Dictionary<string, int[]> _objectBatches = [];
     private int _objectInstances;
+    private VertexPositionNormalTexture[] _skyVertices = [];
+    private readonly Dictionary<string, int[]> _skyBatches = [];
+    private float _skyCenterX, _skyCenterY;
     private VertexPositionNormalTexture[] _ringVertices = [];
     private readonly Dictionary<string, int[]> _ringBatches = [];
     private int _ringsBuiltFor = -1;
@@ -232,6 +235,7 @@ public sealed class StageViewerGame : Game
         LoadTextures(_actArchive);
         LoadRingModel();
         LoadObjectModels();
+        LoadBackground();
         if (_pending is not null)
         {
             BuildBuffers(_pending);
@@ -504,6 +508,118 @@ public sealed class StageViewerGame : Game
         catch (AmbException) { }
     }
 
+    /// <summary>
+    /// Loads the zone's far background — the sky, distant scenery and clouds.
+    /// </summary>
+    /// <remarks>
+    /// This is what fills the black void behind the level. The models live in a
+    /// nested <c>MAPFAR</c> archive per zone; they draw once, deep, centred on the
+    /// middle of the stage. A proper background scrolls with parallax against the
+    /// camera, which is a later refinement — drawing it at all is the point here.
+    /// </remarks>
+    private void LoadBackground()
+    {
+        int cut = _actArchive.IndexOf('/');
+        string zone = cut < 0 ? "" : _actArchive[..cut];
+        // e.g. G_ZONE1 -> G_ZONE1/MAPFAR/EP2_MAPFAR_ZONE1.AMB
+        string tag = zone.StartsWith("G_ZONE", StringComparison.OrdinalIgnoreCase)
+            ? zone["G_".Length..] : zone;
+        string path = $"{zone}/MAPFAR/EP2_MAPFAR_{tag}.AMB";
+        if (!_content.Exists(path)) return;
+
+        try
+        {
+            var outer = AmbArchive.Parse(_content.Read(path));
+            AmbArchive? models = null, textures = null;
+            foreach (var entry in outer.Entries)
+            {
+                if (entry.Name.EndsWith("_MDL.AMB", StringComparison.OrdinalIgnoreCase))
+                    models = outer.OpenNested(entry);
+                else if (entry.Name.EndsWith("_TEX.AMB", StringComparison.OrdinalIgnoreCase))
+                    textures = outer.OpenNested(entry);
+            }
+            if (models is null) return;
+
+            if (textures is not null)
+                foreach (var entry in textures.Entries)
+                {
+                    if (!entry.Name.EndsWith(".DDS", StringComparison.OrdinalIgnoreCase)) continue;
+                    string label = entry.Name.Replace((char)92, '/');
+                    label = label[(label.LastIndexOf('/') + 1)..].ToUpperInvariant();
+                    if (_textures.ContainsKey(label)) continue;
+                    try
+                    {
+                        var decoded = DdsTexture.Parse(textures.Read(entry).Span);
+                        var tex = new Texture2D(GraphicsDevice, decoded.Width, decoded.Height);
+                        tex.SetData(decoded.Pixels);
+                        _textures[label] = tex;
+                    }
+                    catch (Exception ex) when (ex is DdsException or ArgumentException) { }
+                }
+
+            // The sky, distant scenery and clouds, deepest first.
+            var batch = new StageBatch();
+            float depth = -900f;
+            foreach (var entry in models.Entries)
+            {
+                if (!entry.Name.EndsWith(".ZNO", StringComparison.OrdinalIgnoreCase)) continue;
+                var model = NnModel.Load(models.Read(entry));
+                if (model is null || model.MeshSets.Count == 0) continue;
+                batch.Add(TileMesh.From(model), 0f, 0f, depth);
+                depth += 20f;
+            }
+
+            var stage = _engine.Stage!;
+            _skyCenterX = (stage.MinX + stage.MaxX) / 2f;
+            _skyCenterY = (stage.MinY + stage.MaxY) / 2f;
+
+            _skyVertices = new VertexPositionNormalTexture[batch.VertexCount];
+            for (int i = 0; i < _skyVertices.Length; i++)
+                _skyVertices[i] = new VertexPositionNormalTexture(
+                    new Vector3(batch.Positions[i * 3], batch.Positions[i * 3 + 1],
+                                batch.Positions[i * 3 + 2]),
+                    Vector3.Backward,
+                    new Vector2(batch.TexCoords[i * 2], 1f - batch.TexCoords[i * 2 + 1]));
+            foreach (var pair in batch.IndicesByTexture)
+                _skyBatches[pair.Key] = [.. pair.Value];
+
+            Console.WriteLine($"background loaded: {_skyVertices.Length:N0} vertices");
+        }
+        catch (Exception ex) when (ex is AmbException or NnException) { }
+    }
+
+    /// <summary>
+    /// Draws the far background, parallaxed against the camera.
+    /// </summary>
+    /// <remarks>
+    /// The background sits at a fraction of the camera's motion, the shorthand
+    /// every side-scroller uses for distance, and is pinned near the top of the
+    /// stage where the sky belongs.
+    /// </remarks>
+    private void DrawBackground()
+    {
+        if (_skyVertices.Length == 0) return;
+
+        // Parallax: the background trails the camera at a fraction of its motion.
+        float px = _skyCenterX + (_camera.X - _skyCenterX) * 0.7f;
+        float py = _skyCenterY + (_camera.Y - _skyCenterY) * 0.3f + 80f;
+        _effect.World = Matrix.CreateTranslation(px, py, 0f);
+
+        foreach (var pair in _skyBatches)
+        {
+            _effect.Texture = _textures.TryGetValue(pair.Key.ToUpperInvariant(), out var t)
+                ? t : _white;
+            foreach (var pass in _effect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                GraphicsDevice.DrawUserIndexedPrimitives(
+                    PrimitiveType.TriangleList, _skyVertices, 0, _skyVertices.Length,
+                    pair.Value, 0, pair.Value.Length / 3);
+            }
+        }
+        _effect.World = Matrix.Identity;
+    }
+
     /// <summary>Draws the placed object models.</summary>
     private void DrawObjects()
     {
@@ -748,6 +864,9 @@ public sealed class StageViewerGame : Game
         // blending their transparent pixels draw as black silhouettes, which is
         // what the stage looked like before this line.
         GraphicsDevice.BlendState = BlendState.AlphaBlend;
+
+        // The far background first, deep enough that everything draws over it.
+        DrawBackground();
 
         // One draw per texture. DrawUserIndexedPrimitives also has a per-call
         // primitive limit well below an act's triangle count, so each batch is
