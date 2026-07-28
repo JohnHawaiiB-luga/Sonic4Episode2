@@ -176,6 +176,25 @@ That takes resolution to **11 of 45** names: 8 exact and 3 abbreviated
 (`Avalanche01`, `Avalanche02`, `SandTrank01`). The rest are genuine renames like
 `SCONCE` and `NEEDLE`, and they stay open until something identifies them.
 
+
+## Objects identified by placement statistics
+
+Three objects have no recovered *name* but a distinctive *placement*, enough to
+identify a role without disassembly:
+
+| Id | Per act | Position | Identification |
+|----|---------|----------|----------------|
+| 443 | exactly once | mean 3% of width | **act start marker** — where the player spawns |
+| 520 | exactly once | mean 86% of width, 11 of 13 acts | **goal panel** — crossing it clears the act |
+| 719 | exactly once | **0.04 to 0.91**, no pattern | once-per-act, role unconfirmed |
+
+443 and 520 sit consistently at the two ends and match start/goal semantics
+exactly, so the engine uses them. **719 does not get a behaviour.** It is once per
+act like a checkpoint would be, but its position varies across the whole act with
+no pattern, and "checkpoint" is a guess the data does not support. It is recorded
+here as an open observation so the next person starts from the fact, not the
+guess.
+
 ## The asset manifest
 
 The engine loads archives by number, not name. A global table pairs each numeric
