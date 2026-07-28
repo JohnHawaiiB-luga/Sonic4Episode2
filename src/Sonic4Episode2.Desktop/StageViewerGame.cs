@@ -53,6 +53,25 @@ public sealed class StageViewerGame : Game
     private bool _shownRolling;
 
     /// <summary>
+    /// When set, the viewer draws this many frames, writes a PNG and exits.
+    /// </summary>
+    /// <remarks>
+    /// A real screenshot of the real renderer is the only honest way to show that
+    /// the stage draws — an offline rasteriser proves the data decoded, not that
+    /// the engine works. A few frames pass first so the camera settles and the
+    /// player has landed.
+    /// </remarks>
+    public string? ScreenshotPath { get; set; }
+
+    /// <summary>Frames to run before the screenshot is taken.</summary>
+    public int ScreenshotFrame { get; set; } = 30;
+
+    /// <summary>Cell to drop the player into; see <see cref="GameEngine.SpawnCellX"/>.</summary>
+    public int? SpawnCellX { get; set; }
+
+    private int _frames;
+
+    /// <summary>
     /// Runs against an installed copy with keyboard input, which is the desktop
     /// case. The other constructor is what the mobile heads use.
     /// </summary>
@@ -87,7 +106,11 @@ public sealed class StageViewerGame : Game
     /// </remarks>
     private void LoadStage()
     {
-        _engine = new GameEngine(_content) { ActArchive = _actArchive };
+        _engine = new GameEngine(_content)
+        {
+            ActArchive = _actArchive,
+            SpawnCellX = SpawnCellX,
+        };
 
         // The boot scene requests its own exit on entry, so a single step lands
         // in the stage scene with its archives mounted.
@@ -403,6 +426,21 @@ public sealed class StageViewerGame : Game
         }
     }
 
+    /// <summary>Writes what is currently on screen to a PNG.</summary>
+    private void SaveScreenshot(string path)
+    {
+        int w = GraphicsDevice.PresentationParameters.BackBufferWidth;
+        int h = GraphicsDevice.PresentationParameters.BackBufferHeight;
+        var data = new Color[w * h];
+        GraphicsDevice.GetBackBufferData(data);
+
+        using var texture = new Texture2D(GraphicsDevice, w, h);
+        texture.SetData(data);
+        using var stream = File.Create(path);
+        texture.SaveAsPng(stream, w, h);
+        Console.WriteLine($"screenshot {path} ({w}x{h})");
+    }
+
     protected override void Update(GameTime gameTime)
     {
         bool rolling = _engine.Player?.Rolling ?? false;
@@ -521,5 +559,11 @@ public sealed class StageViewerGame : Game
         DrawRings();
         DrawPlayerMarker();
         base.Draw(gameTime);
+
+        if (ScreenshotPath is not null && ++_frames >= ScreenshotFrame)
+        {
+            SaveScreenshot(ScreenshotPath);
+            Exit();
+        }
     }
 }

@@ -95,6 +95,18 @@ public sealed class GameEngine
     /// <summary>Act archive the stage scene will mount, relative to the root.</summary>
     public string ActArchive { get; set; } = "G_ZONE1/MAP/ZONE11_MAP.AMB";
 
+    /// <summary>
+    /// Cell the player is dropped into, or null to use a point near the act's
+    /// start.
+    /// </summary>
+    /// <remarks>
+    /// The real start position comes from the stage data and is not identified
+    /// yet, so this exists to put the player somewhere worth looking at while
+    /// testing. Zone 1 Act 1's opening stretch is flat solid ground for forty
+    /// cells, which is correct and extremely dull.
+    /// </remarks>
+    public int? SpawnCellX { get; set; }
+
     /// <summary>Diagnostics from the last mount.</summary>
     public string Status { get; private set; } = "";
 
@@ -189,9 +201,9 @@ public sealed class GameEngine
             // Drop onto whatever is below rather than guessing a spawn point.
             // The real one comes from the .EV placement data, once object ids
             // have names attached to them.
-            Player.PlaceOnGround(
-                Collision.Width * Collision.CellSize * 0.06f,
-                -Collision.Height * Collision.CellSize * 0.1f);
+            float spawnX = (SpawnCellX ?? (int)(Collision.Width * 0.06f))
+                           * Collision.CellSize;
+            Player.PlaceOnGround(spawnX, -Collision.Height * Collision.CellSize * 0.1f);
         }
     }
 

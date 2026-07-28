@@ -5,8 +5,20 @@ using Sonic4Episode2.Desktop;
 //
 // Requires your own copy of the game; nothing here ships assets.
 
-string root = args.Length > 0 ? args[0] : ".";
-string act = args.Length > 1 ? args[1] : "G_ZONE1/MAP/ZONE11_MAP.AMB";
+// --screenshot <path> draws a few frames, writes a PNG and exits, which is how
+// the README's pictures of the running renderer are made.
+string? screenshot = null;
+int? spawn = null;
+var rest = new List<string>();
+for (int i = 0; i < args.Length; i++)
+{
+    if (args[i] == "--screenshot" && i + 1 < args.Length) screenshot = args[++i];
+    else if (args[i] == "--spawn" && i + 1 < args.Length) spawn = int.Parse(args[++i]);
+    else rest.Add(args[i]);
+}
+
+string root = rest.Count > 0 ? rest[0] : ".";
+string act = rest.Count > 1 ? rest[1] : "G_ZONE1/MAP/ZONE11_MAP.AMB";
 
 if (!Directory.Exists(root))
 {
@@ -14,6 +26,10 @@ if (!Directory.Exists(root))
     return 2;
 }
 
-using var game = new StageViewerGame(root, act);
+using var game = new StageViewerGame(root, act)
+{
+    ScreenshotPath = screenshot,
+    SpawnCellX = spawn,
+};
 game.Run();
 return 0;

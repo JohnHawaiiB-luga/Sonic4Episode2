@@ -109,6 +109,29 @@ python tools/nn.py     export    G_ZONE1/MAP/ZONE1_M.AMB Z1_G_FL_A out/
 python tools/stageview.py        G_ZONE1/MAP/ZONE11_MAP.AMB out/ --layers _B
 ```
 
+# What the renderer actually looks like right now
+
+![The desktop viewer](docs/images/viewer-zone1act1.png)
+
+*The running viewer, captured with `--screenshot`. This is honest rather than
+flattering: it is **one of seven layers**, unlit, with no objects and a blue
+rectangle where Sonic goes.*
+
+Zone 1 Act 1 ships sixteen grids. The viewer draws exactly one of them:
+
+| Layer | Filled cells | Drawn? |
+|-------|-------------:|--------|
+| `_B` main terrain | 17,529 | **yes** |
+| `_ATTR_B` collision | 18,814 | not drawn, but it is what you walk on |
+| `_A` foreground | 1,134 | no |
+| `_M`, `_M1`, `_M2`, `_M3` parallax | 2,394 | no |
+| `_N` | 836 | no |
+
+So the flat wall of masonry is not a bug — it is Sylvania Castle's stonework with
+its foreground, its parallax and its lighting all still missing. The game's own
+1,843 shaders are parsed but not yet used; the viewer draws with a stock unlit
+effect.
+
 # What the collision actually looks like
 
 The tile grid says what a level *looks* like. The collision says what it **is**,
