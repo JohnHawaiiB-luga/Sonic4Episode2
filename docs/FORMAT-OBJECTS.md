@@ -176,6 +176,35 @@ That takes resolution to **11 of 45** names: 8 exact and 3 abbreviated
 (`Avalanche01`, `Avalanche02`, `SandTrank01`). The rest are genuine renames like
 `SCONCE` and `NEEDLE`, and they stay open until something identifies them.
 
+## The asset manifest
+
+The engine loads archives by number, not name. A global table pairs each numeric
+asset id with its path, in 20-byte records — `{path, buffer, reserved=0, loader,
+id}`. `tools/assets.py` recovers all **390** of them; `analysis/asset-manifest.json`
+is the result. It is the load-time counterpart to the spawn table: that says which
+*code* an id runs, this says which *archive* an id loads.
+
+It is also a fourth confirmation that character 2 is Metal Sonic — asset id 2 is
+`G_COM/PLY/MSN_MTN.AMB`, his motion archive.
+
+### An approach that did not work, and why
+
+The tempting next step was to connect the two: walk each spawn handler for the
+asset ids it loads, and read the archive name off the manifest. It fails, and the
+failure is instructive.
+
+Asset ids are small integers, and small integers are what x86 code is *made* of.
+`EP2_GMK_WATER_MDL.AMB` is id **2176 = 0x880**, a byte count and struct offset
+that appears all over the executable, so a scan for that immediate "finds" the
+water model referenced from 20 unrelated handlers. It is the same false-positive
+class as the `0xCC` function-boundary trap from beat 22 and the denormal-weight
+trap from beat 40: **a value common enough to be noise cannot carry a match.**
+
+Connecting a handler to its assets needs the load actually traced — the id has to
+reach the loader through a data path, not merely appear as a constant — which is a
+real disassembly job rather than a scan. Left for when it is the most valuable
+thing to do; right now the zone-and-letters resolver covers the drawable objects.
+
 ## What is still open
 
 - Ids with no name need identifying from behaviour — what they read, what they
