@@ -9,11 +9,19 @@ using Sonic4Episode2.Desktop;
 // the README's pictures of the running renderer are made.
 string? screenshot = null;
 int? spawn = null;
+int? spawnY = null;
 var rest = new List<string>();
 for (int i = 0; i < args.Length; i++)
 {
     if (args[i] == "--screenshot" && i + 1 < args.Length) screenshot = args[++i];
-    else if (args[i] == "--spawn" && i + 1 < args.Length) spawn = int.Parse(args[++i]);
+    else if (args[i] == "--spawn" && i + 1 < args.Length)
+    {
+        // "x" or "x,y" — the row matters because a stage's top rows are often
+        // solid backdrop rather than sky.
+        var parts = args[++i].Split(',');
+        spawn = int.Parse(parts[0]);
+        if (parts.Length > 1) spawnY = int.Parse(parts[1]);
+    }
     else rest.Add(args[i]);
 }
 
@@ -30,6 +38,7 @@ using var game = new StageViewerGame(root, act)
 {
     ScreenshotPath = screenshot,
     SpawnCellX = spawn,
+    SpawnCellY = spawnY,
 };
 game.Run();
 return 0;

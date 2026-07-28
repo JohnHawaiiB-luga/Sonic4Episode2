@@ -69,6 +69,9 @@ public sealed class StageViewerGame : Game
     /// <summary>Cell to drop the player into; see <see cref="GameEngine.SpawnCellX"/>.</summary>
     public int? SpawnCellX { get; set; }
 
+    /// <inheritdoc cref="GameEngine.SpawnCellY"/>
+    public int? SpawnCellY { get; set; }
+
     private int _frames;
 
     /// <summary>
@@ -110,6 +113,7 @@ public sealed class StageViewerGame : Game
         {
             ActArchive = _actArchive,
             SpawnCellX = SpawnCellX,
+            SpawnCellY = SpawnCellY,
         };
 
         // The boot scene requests its own exit on entry, so a single step lands
@@ -531,6 +535,10 @@ public sealed class StageViewerGame : Game
         GraphicsDevice.DepthStencilState = DepthStencilState.Default;
         GraphicsDevice.RasterizerState = RasterizerState.CullNone;
         GraphicsDevice.SamplerStates[0] = SamplerState.LinearWrap;
+        // Foliage, railings and window tracery are cut-out textures. Without
+        // blending their transparent pixels draw as black silhouettes, which is
+        // what the stage looked like before this line.
+        GraphicsDevice.BlendState = BlendState.AlphaBlend;
 
         // One draw per texture. DrawUserIndexedPrimitives also has a per-call
         // primitive limit well below an act's triangle count, so each batch is

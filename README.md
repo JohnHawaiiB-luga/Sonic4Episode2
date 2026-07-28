@@ -113,24 +113,25 @@ python tools/stageview.py        G_ZONE1/MAP/ZONE11_MAP.AMB out/ --layers _B
 
 ![The desktop viewer](docs/images/viewer-zone1act1.png)
 
-*The running viewer, captured with `--screenshot`. This is honest rather than
-flattering: it is **one of seven layers**, unlit, with no objects and a blue
-rectangle where Sonic goes.*
+*Sylvania Castle Act 1 in the running viewer, captured with `--screenshot`. All
+seven scenery layers, 21,890 tiles, the stage's own textures. The blue sliver on
+the middle platform is the player; the yellow circles are rings, exactly where the
+`.RG` file puts them.*
 
-Zone 1 Act 1 ships sixteen grids. The viewer draws exactly one of them:
+Getting here took three fixes worth naming, because each looked like a rendering
+bug and none was:
 
-| Layer | Filled cells | Drawn? |
-|-------|-------------:|--------|
-| `_B` main terrain | 17,529 | **yes** |
-| `_ATTR_B` collision | 18,814 | not drawn, but it is what you walk on |
-| `_A` foreground | 1,134 | no |
-| `_M`, `_M1`, `_M2`, `_M3` parallax | 2,394 | no |
-| `_N` | 836 | no |
+- **Only one layer was drawn.** An act ships sixteen grids and seven are scenery.
+  The other six are now instanced too, which is where the towers, railings and
+  window tracery come from.
+- **The camera was inside a wall.** Zone 1 Act 1 is solid masonry from row 0 to
+  row 25 across its entire width — the castle backdrop — so dropping a player
+  from the top of the map lands it on the ceiling. `--spawn x,y` picks a row.
+- **Cut-out textures drew as black silhouettes.** The foliage, railings and
+  tracery all carry alpha and the renderer was not blending. One line.
 
-So the flat wall of masonry is not a bug — it is Sylvania Castle's stonework with
-its foreground, its parallax and its lighting all still missing. The game's own
-1,843 shaders are parsed but not yet used; the viewer draws with a stock unlit
-effect.
+Still missing: lighting, the game's own 1,843 shaders (parsed, unused), objects,
+and a character model where that blue sliver is.
 
 # What the collision actually looks like
 

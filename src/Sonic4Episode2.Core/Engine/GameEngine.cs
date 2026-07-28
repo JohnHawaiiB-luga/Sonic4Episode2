@@ -107,6 +107,17 @@ public sealed class GameEngine
     /// </remarks>
     public int? SpawnCellX { get; set; }
 
+    /// <summary>
+    /// Row the drop starts from, or null to start near the top.
+    /// </summary>
+    /// <remarks>
+    /// Needed because a stage's upper rows are not sky. Zone 1 Act 1 is solid
+    /// masonry from row 0 to row 25 across its whole width — the castle wall
+    /// behind the level — so a drop that starts at the top lands on the backdrop
+    /// instead of the floor.
+    /// </remarks>
+    public int? SpawnCellY { get; set; }
+
     /// <summary>Diagnostics from the last mount.</summary>
     public string Status { get; private set; } = "";
 
@@ -131,6 +142,7 @@ public sealed class GameEngine
         var batch = new StageBatch();
         var placements = new List<Placement>();
         var rings = new List<Ring>();
+        int layers = 0;
 
         // Ground shapes and their angles live in the zone's ATTR archive.
         var (shapes, angles) = LoadShapes(actPath, _content);
@@ -164,10 +176,12 @@ public sealed class GameEngine
                 rings.AddRange(RingPlacements.Parse(archive.Read(entry).Span).Items);
                 continue;
             }
-            if (!label.EndsWith("_B.MP", StringComparison.OrdinalIgnoreCase)) continue;
+            string? suffix = VisualLayerOf(label);
+            if (suffix is null) continue;
 
             var grid = StageGrid.Parse(label, archive.Read(entry).Span);
-            assembler.AddLayer(grid, "_B", batch);
+            assembler.AddLayer(grid, suffix, batch);
+            layers++;
         }
 
         if (attributeGrid is not null)
@@ -182,7 +196,7 @@ public sealed class GameEngine
         int identified = placements.Count(p => ObjectCatalog.IsKnown(p.ObjectId));
         Status = $"{assembler.TilesPlaced} tiles, {batch.VertexCount:N0} vertices, " +
                  $"{batch.TriangleCount:N0} triangles, " +
-                 $"{identified}/{placements.Count} placements identified, " +
+                 $"{layers} layers, {identified}/{placements.Count} placements identified, " +
                  $"{rings.Count} rings" +
                  (Collision?.HasShapes == true ? ", height fields" : ", blocky collision") +
                  (Collision?.HasAngles == true ? " with angles" : "");
@@ -203,8 +217,29 @@ public sealed class GameEngine
             // have names attached to them.
             float spawnX = (SpawnCellX ?? (int)(Collision.Width * 0.06f))
                            * Collision.CellSize;
-            Player.PlaceOnGround(spawnX, -Collision.Height * Collision.CellSize * 0.1f);
+            float spawnY = -(SpawnCellY ?? (int)(Collision.Height * 0.1f))
+                           * Collision.CellSize;
+            Player.PlaceOnGround(spawnX, spawnY);
         }
+    }
+
+    /// <summary>
+    /// The layer a grid belongs to, or null when it is not one to draw.
+    /// </summary>
+    /// <remarks>
+    /// An act ships sixteen grids and only seven of them are scenery. The
+    /// <c>_ATTR_</c> pair is collision and must never be drawn, and the longest
+    /// suffix has to win — <c>ZONE11_M1.MP</c> ends with <c>1.MP</c> but is the
+    /// <c>_M1</c> layer, and testing <c>_M</c> first would put it at the wrong
+    /// depth.
+    /// </remarks>
+    private static string? VisualLayerOf(string label)
+    {
+        if (label.Contains("_ATTR", StringComparison.OrdinalIgnoreCase)) return null;
+        foreach (string suffix in StageAssembler.LayerOrder)
+            if (label.EndsWith($"{suffix}.MP", StringComparison.OrdinalIgnoreCase))
+                return suffix;
+        return null;
     }
 
     /// <summary>

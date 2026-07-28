@@ -24,6 +24,16 @@ public sealed class StageAssembler
 {
     public const float CellSize = 20.0f;
 
+    /// <summary>
+    /// Layer suffixes, longest first so a prefix never shadows a longer name.
+    /// </summary>
+    /// <remarks>
+    /// <c>_M1</c> must be tested before <c>_M</c>, or every parallax layer
+    /// collapses onto the same depth.
+    /// </remarks>
+    public static readonly string[] LayerOrder =
+        ["_M1", "_M2", "_M3", "_A", "_B", "_N", "_M"];
+
     /// <summary>Layer suffix to depth, following the parallax ordering.</summary>
     private static readonly Dictionary<string, float> LayerDepth = new()
     {
