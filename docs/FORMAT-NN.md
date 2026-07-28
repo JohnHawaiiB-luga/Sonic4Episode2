@@ -503,9 +503,28 @@ separate input register. Either the indices are packed into those same 16 bytes
 alongside the weights, or the declaration feeds `v2` from somewhere the stride
 does not account for.
 
-The next step is the **D3D9 vertex declaration** the engine builds per vertex
-list. That names each element's offset, type and usage outright, and settles both
-questions at once.
+Both were settled by reading the bytes — see the weights and indices above. What
+remains is only the **index-to-node table**.
+
+### Ruling things out for the palette
+
+Two candidates checked and eliminated, recorded so they are not checked twice:
+
+- **Mesh set `+0x24`** is a plain sequential ordinal. On Sonic's eighteen mesh
+  sets it reads `0 1 2 ... 17` exactly, so it identifies the mesh set and points
+  at nothing.
+- **The subobject's trailing dwords** give `5` and an offset to `0, 1, 2, 3, 4`
+  sitting immediately before the subobject record. That cannot be the palette for
+  vertices whose indices reach **15**, and across the build the counts fail to sum
+  to the header's `n_mtxpal` on 2,175 of 3,546 models.
+
+There are also **no static `D3DVERTEXELEMENT9` arrays** in `Sonic.exe` — a search
+for the `D3DDECL_END()` sentinel finds zero — so declarations are built at
+runtime from the format word.
+
+What is known about the target: **99 palette entries on Sonic across 18 mesh
+sets**, so roughly 5-6 each, entries are node indices in `0..108`, and vertex
+indices never exceed 15, which caps any single palette at 16.
 
 ## Still open
 
