@@ -149,6 +149,57 @@ official reference for what a correct translation should look like.
 
 ---
 
+## The retail Android APK — a fourth oracle, and a new container format
+
+Separate from the symbolized dev `.so`, we now hold the **retail Android build**:
+`com.sega.sonic4ep2thd` version 1.4 — the Tegra HD release. Two copies exist that
+are the *same build* differing only in signing (`CERT.RSA`/`CERT.SF`/`MANIFEST.MF`
+and a 16-byte tail on the data pack), so only one is needed.
+
+What it contains:
+
+| Entry | Size | Note |
+|---|---:|---|
+| `assets/res.ogg` | **556 MB** | **Not audio.** The entire game data pack — see below |
+| `lib/armeabi-v7a/libfox.so` | 4.2 MB | The **retail, stripped** engine |
+| `lib/armeabi/libImmEmulatorJ.so` | 0.13 MB | Immersion haptics |
+| `assets/dl.ini` | 18 B | Version code and expected pack byte-size |
+
+Two things worth noting immediately. The retail engine is **4.2 MB against our dev
+build's 12.5 MB** for the same architecture — that difference is almost entirely
+the symbol table, which is a good measure of how unusual the dev build is. And
+retail ships **32-bit ARM only**; there is no arm64 slice.
+
+### `res.ogg` is an `LPK` archive, not an Ogg file
+
+The `.ogg` extension is a packaging trick: Android's build tooling skips
+compression for known media extensions, so naming a pre-packed archive `.ogg`
+makes it get **stored** rather than deflated. The file is stored uncompressed and
+its real magic is `LPK\0`.
+
+Header, as far as it is read (**INFERRED**, not yet verified against extracted
+files):
+
+| Offset | Type | Value seen | Reading |
+|---|---|---|---|
+| `0x00` | `char[4]` | `LPK\0` | magic |
+| `0x04` | `u16` | `1` | version |
+| `0x06` | `u16` | `2281` | **file count** |
+| `0x08` | `u32` | `0x00010077` | unknown |
+| `0x0C` | `u32` | `0x20` | start of the offset table |
+| `0x10` | `u32` | `0x23C4` | end of offset table / next section |
+| `0x14` | `u32` | `0x23D0` | a further section |
+| `0x20` | `u32[2281]` | ascending, `0x80`-aligned | **file offset table** |
+
+**The arithmetic self-validates:** `0x20 + 2281 × 4 = 0x23C4`, which is exactly the
+value stored at `+0x10`. So the count and the offset-table extent agree
+independently, which is strong evidence the first three fields are read correctly.
+
+Decoding `LPK` is the gateway to what the retail mobile build uniquely answers:
+which texture format SEGA actually shipped for mobile (our open ETC2/ASTC
+question), the real touch-control layout, and a second, *release-accurate* copy of
+the level data to check Beta 8 against.
+
 ## Working with it
 
 `rizin` is the tool on this machine (no IDA or Ghidra):
