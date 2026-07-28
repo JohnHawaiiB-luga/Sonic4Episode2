@@ -89,6 +89,9 @@ public sealed class GameEngine
     /// <summary>Rings the player is carrying.</summary>
     public int RingCount { get; private set; }
 
+    /// <summary>Lives in hand. Starts at the series' usual three; a 1-UP adds one.</summary>
+    public int Lives { get; private set; } = 3;
+
     /// <summary>The mounted stage's springs.</summary>
     public Springs? Springs { get; private set; }
 
@@ -390,12 +393,27 @@ public sealed class GameEngine
         if (impulse is not null) Player.Bounce(impulse.Value);
     }
 
-    /// <summary>Breaks any item box the player is touching.</summary>
+    /// <summary>Breaks any item box the player is touching, granting its item.</summary>
     private void CheckItemBoxes()
     {
         if (ItemBoxes is null || Player is null) return;
-        ItemBoxes.Check(new System.Numerics.Vector2(
-            Player.Position.X, Player.Position.Y));
+        foreach (var item in ItemBoxes.Check(new System.Numerics.Vector2(
+                     Player.Position.X, Player.Position.Y)))
+        {
+            switch (item)
+            {
+                case ItemType.Ring10:
+                    RingCount += ItemBoxes.RingsFromMonitor;
+                    Player.TryGoSuper(RingCount);
+                    break;
+                case ItemType.OneUp:
+                    Lives++;
+                    break;
+                // Barrier, HiSpeed, Invincible and Special are identified but need
+                // player power-up subsystems this engine does not have yet, so they
+                // break without granting. Flagged, not silently dropped.
+            }
+        }
     }
 
     /// <summary>Hands the player any ring it is standing in.</summary>

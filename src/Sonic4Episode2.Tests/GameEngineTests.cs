@@ -88,6 +88,51 @@ public class GameEngineTests
         Assert.Equal(5ul, engine.Frame);
     }
 
+    [Fact]
+    public void TheActsItemBoxesHoldTheirRecoveredItems()
+    {
+        string? root = FindGameRoot();
+        if (root is null) return;
+
+        var engine = new GameEngine(root);
+        engine.Step();
+        var boxes = engine.ItemBoxes;
+        Assert.NotNull(boxes);
+
+        // Zone 1 Act 1 places three ten-ring monitors, two 1-UPs and one speed
+        // monitor - read from the placements through the recovered id -> item map.
+        var counts = new Dictionary<ItemType, int>();
+        for (int i = 0; i < boxes!.Count; i++)
+        {
+            var t = boxes.TypeAt(i);
+            counts[t] = counts.GetValueOrDefault(t) + 1;
+        }
+        Assert.Equal(3, counts.GetValueOrDefault(ItemType.Ring10));
+        Assert.Equal(2, counts.GetValueOrDefault(ItemType.OneUp));
+        Assert.Equal(1, counts.GetValueOrDefault(ItemType.HiSpeed));
+    }
+
+    [Fact]
+    public void BreakingARingMonitorGivesTenRings()
+    {
+        string? root = FindGameRoot();
+        if (root is null) return;
+
+        var engine = new GameEngine(root);
+        engine.Step();
+        var boxes = engine.ItemBoxes!;
+        int ring = Enumerable.Range(0, boxes.Count)
+                             .First(i => boxes.TypeAt(i) == ItemType.Ring10);
+
+        // Standing the player on the monitor and stepping should hand over ten
+        // rings through the engine's GM_ITEM task.
+        int before = engine.RingCount;
+        var at = boxes.PositionOf(ring);
+        engine.Player!.Position = new System.Numerics.Vector3(at.X, at.Y, 0f);
+        engine.Step();
+        Assert.Equal(before + ItemBoxes.RingsFromMonitor, engine.RingCount);
+    }
+
     [Theory]
     [InlineData("G_ZONE1/MAP/ZONE11_MAP.AMB", "ZONE1_M.AMB")]
     [InlineData("G_ZONE4/MAP/ZONE42B_MAP.AMB", "ZONE4B_M.AMB")]

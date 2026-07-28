@@ -176,24 +176,33 @@ id through two jump tables and a config array:
 - `w8` indexes the word table at `0x009607A0` = `[2, 3, 4, 1, 5, 6]`, giving the
   box's base config value.
 
-The five effects it grants exist and are **named** in Episode II —
-`GmPlayerItemHiSpeedSet` (`0x005A7CE8`), `GmPlayerItemInvincibleSet`
-(`0x005A7D80`), `GmPlayerItemRing10Set` (`0x005A7E50`), `GmPlayerItemBarrierSet`
-(`0x005A7E88`), `GmPlayerItem1UPSet` (`0x005A7F38`) — matching Episode I's
-`GmGmkItem.cs` (speed, invincible, 10 rings, shield, 1-UP).
+**The config-to-effect mapping is recovered** from the effect dispatcher at
+`0x0053A6C0`. It computes `config - 1`, indexes a jump table at `0x0096079A` =
+`[0, 2, 4, 6, 8, 10]`, and branches to one of five named effects, each called
+through its PLT stub (the functions are exported, so the calls go via the GOT —
+which is why no direct `BL` reaches them):
 
-**Two things are OPEN**, and both are why the engine breaks boxes but grants
-nothing yet:
+| config | jump | effect | function |
+|-------:|-----:|--------|----------|
+| 1 | 0 | shield | `GmPlayerItemBarrierSet` (`0x005A7E88`) |
+| 2 | 2 | speed shoes | `GmPlayerItemHiSpeedSet` (`0x005A7CE8`) |
+| 3 | 4 | invincibility | `GmPlayerItemInvincibleSet` (`0x005A7D80`) |
+| 4 | 6 | ten rings | `GmPlayerItemRing10Set` (`0x005A7E50`) |
+| 5 | 8 | 1-UP | `GmPlayerItem1UPSet` (`0x005A7F38`) |
+| 6 | 10 | (state-dependent) | special case, co-op / Super |
 
-1. **The config value is refined at runtime** (`GmGmkItemInit` `0x00539600`-`…20`)
-   by save/game state — co-op mode and whether Super is available change what a
-   box shows — so the id alone does not fix the effect.
-2. **The effect is applied player-side through a vtable/pointer dispatch** that
-   carries no direct `BL` or `ADRP+ADD` reference to the five functions, so the
-   config-value-to-effect mapping is not yet read from Episode II's own code.
+Composing the id→config and config→effect chains gives ids 63-67 →
+speed / invincible / 10 rings / shield / 1-UP — **the exact order Episode I's
+`GmGmkItem.cs` lists**, recovered here entirely from Episode II's own two-level
+dispatch. That independent agreement is the clean-room cross-check. The mapping
+is `ItemBoxes.TypeOf` in the engine.
 
-Guessing that mapping would be exactly the kind of borrowed-from-Episode-I value
-this project flags; it is left OPEN until Episode II's dispatch is traced.
+One caveat stays honest: a few monitors are **refined at runtime**
+(`GmGmkItemInit` `0x00539600`-`…20`) by co-op mode and Super availability, which
+the engine does not model, so those show their static base item. The engine
+grants the effects it has systems for — rings and 1-UPs — and breaks the rest
+(shield, speed, invincibility) without granting, pending player power-up
+subsystems.
 
 ## Usage
 

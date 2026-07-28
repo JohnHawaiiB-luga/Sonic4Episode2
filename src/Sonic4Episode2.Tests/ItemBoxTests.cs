@@ -30,9 +30,9 @@ public class ItemBoxTests
         var at = boxes.PositionOf(0);
 
         Assert.False(boxes.IsBroken(0));
-        Assert.Equal(1, boxes.Check(at));       // breaks
+        Assert.Single(boxes.Check(at));         // breaks, yields one item
         Assert.True(boxes.IsBroken(0));
-        Assert.Equal(0, boxes.Check(at));       // already broken, no second break
+        Assert.Empty(boxes.Check(at));          // already broken, nothing more
         Assert.Equal(0, boxes.Remaining);
     }
 
@@ -40,7 +40,7 @@ public class ItemBoxTests
     public void AMissedBoxStaysWhole()
     {
         var boxes = Field((640, 640));
-        Assert.Equal(0, boxes.Check(boxes.PositionOf(0) + new Vector2(1000f, 0f)));
+        Assert.Empty(boxes.Check(boxes.PositionOf(0) + new Vector2(1000f, 0f)));
         Assert.False(boxes.IsBroken(0));
         Assert.Equal(1, boxes.Remaining);
     }
@@ -51,12 +51,41 @@ public class ItemBoxTests
         var boxes = Field((100, 100), (500, 100));
         Assert.Equal(2, boxes.Remaining);
 
-        Assert.Equal(1, boxes.Check(boxes.PositionOf(0)));
+        Assert.Single(boxes.Check(boxes.PositionOf(0)));
         Assert.True(boxes.IsBroken(0));
         Assert.False(boxes.IsBroken(1));
         Assert.Equal(1, boxes.Remaining);
 
-        Assert.Equal(1, boxes.Check(boxes.PositionOf(1)));
+        Assert.Single(boxes.Check(boxes.PositionOf(1)));
         Assert.Equal(0, boxes.Remaining);
+    }
+
+    [Fact]
+    public void ItemTypesMatchEpisodeIThroughEpisodeIItsOwnDispatch()
+    {
+        // ids 63-67 recovered from Episode II's id->config->effect chain, and the
+        // order is exactly Episode I's GmGmkItem.cs.
+        Assert.Equal(ItemType.HiSpeed, ItemBoxes.TypeOf(63));
+        Assert.Equal(ItemType.Invincible, ItemBoxes.TypeOf(64));
+        Assert.Equal(ItemType.Ring10, ItemBoxes.TypeOf(65));
+        Assert.Equal(ItemType.Barrier, ItemBoxes.TypeOf(66));
+        Assert.Equal(ItemType.OneUp, ItemBoxes.TypeOf(67));
+
+        // A second id range resolves to the same effects.
+        Assert.Equal(ItemType.Ring10, ItemBoxes.TypeOf(455));
+        Assert.Equal(ItemType.OneUp, ItemBoxes.TypeOf(457));
+        Assert.Equal(ItemType.HiSpeed, ItemBoxes.TypeOf(458));
+
+        // The config numbers are Episode II's own, straight from the dispatcher.
+        Assert.Equal(4, (int)ItemType.Ring10);
+        Assert.Equal(5, (int)ItemType.OneUp);
+    }
+
+    [Fact]
+    public void ABrokenBoxYieldsItsItem()
+    {
+        var boxes = new ItemBoxes([new Placement(100, 100, 65, 0, 0)]);  // a Ring10 id
+        var got = boxes.Check(boxes.PositionOf(0));
+        Assert.Equal(ItemType.Ring10, Assert.Single(got));
     }
 }
