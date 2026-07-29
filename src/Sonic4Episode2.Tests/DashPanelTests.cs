@@ -55,7 +55,7 @@ public class DashPanelTests
                      Springs.DirectionAngles);
         for (int i = 1; i < Springs.DirectionAngles.Length; i++)
             Assert.Equal(8192, Springs.DirectionAngles[i] - Springs.DirectionAngles[i - 1]);
-        Assert.Equal(9.0f, Springs.VerticalSpeedCap);
+        Assert.Equal(9.0f, Springs.HorizontalSpeedCap);
     }
 
     [Fact]

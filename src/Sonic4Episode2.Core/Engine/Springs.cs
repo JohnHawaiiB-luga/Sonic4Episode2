@@ -17,7 +17,7 @@ namespace Sonic4Episode2.Core.Engine;
 /// touch handler passes the launch velocity into <c>GmPlySeqInitSpringJump</c>
 /// (arm64 <c>0x005D1520</c>) as arguments rather than reading a named constant,
 /// so the scalar is not a single traceable value. What <i>is</i> recovered from
-/// that sequence is the <b>vertical-velocity ceiling of 9.0</b> px/frame it
+/// that sequence is the <b>horizontal-velocity ceiling of 9.0</b> px/frame it
 /// clamps the result to (<c>0x41100000</c>). The base speed stays flagged.
 /// </para>
 /// <para>
@@ -37,11 +37,16 @@ public sealed class Springs
     public const float ImpulsePixels = 7.5f;
 
     /// <summary>
-    /// Vertical-velocity ceiling a spring launch is clamped to, in game pixels
+    /// Horizontal-velocity ceiling a spring launch is clamped to, in game pixels
     /// per frame. <b>Recovered from Episode II</b>: <c>GmPlySeqInitSpringJump</c>
-    /// caps offset <c>0xC8</c> (the player's vertical speed) at this value.
+    /// caps offset <c>0xC8</c> at this value. The named damage-speed setter at
+    /// arm64 <c>0x005B9304</c> independently identifies <c>0xC8</c> as horizontal
+    /// by deriving the facing flag from its sign.
     /// </summary>
-    public const float VerticalSpeedCap = 9.0f;
+    public const float HorizontalSpeedCap = 9.0f;
+
+    [Obsolete("Use HorizontalSpeedCap; the recovered field is horizontal.")]
+    public const float VerticalSpeedCap = HorizontalSpeedCap;
 
     /// <summary>
     /// Spring launch directions, A16 angles (65536 per turn), read from the table
