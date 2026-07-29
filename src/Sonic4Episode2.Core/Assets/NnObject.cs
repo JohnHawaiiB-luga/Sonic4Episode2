@@ -470,6 +470,40 @@ public sealed record NnNode(
     };
 }
 
+/// <summary>One texture stage of a material.</summary>
+/// <remarks>
+/// A 32-byte record: <c>u32 flags</c>, <c>u32 index</c> into the model's texture
+/// list, then floats. The flags separate into families by observation across the
+/// build's 14,357 stages — <c>0x60000002</c> is the diffuse base and is stage 0
+/// on 8,808 materials, <c>0x60000004</c> an environment map usually in stage 2,
+/// and the <c>0x000N000N</c> family (both halves equal, high nibble clear) sits
+/// in odd slots repeating index 0 and appears to be inert padding rather than a
+/// live stage. Roles beyond base and environment are <b>not yet confirmed</b>.
+/// </remarks>
+/// <param name="Flags">The stage's raw flag word.</param>
+/// <param name="Index">Index into the model's texture list.</param>
+public readonly record struct NnTextureStage(uint Flags, int Index)
+{
+    /// <summary>32 bytes, verified: 14,357 indices decoded, 0 out of range.</summary>
+    public const int Size = 32;
+
+    /// <summary>
+    /// Whether this looks like a live stage rather than inert padding.
+    /// </summary>
+    /// <remarks>
+    /// The padding family has a clear high nibble and mirrors its low half into
+    /// its high half (<c>0x00010001</c>, <c>0x00020002</c>, <c>0x00030003</c>).
+    /// Live stages set the top nibble (<c>0x6…</c> or <c>0x2…</c>).
+    /// </remarks>
+    public bool IsLive => (Flags & 0xF0000000u) != 0;
+
+    /// <summary>The diffuse base map — the stage the renderer draws today.</summary>
+    public bool IsBase => IsLive && (Flags & 0xFFFFu) == 2;
+
+    /// <summary>An environment (reflection) map.</summary>
+    public bool IsEnvironment => IsLive && (Flags & 0xFFFFu) == 4;
+}
+
 /// <summary>A material, and the texture it selects.</summary>
 /// <remarks>
 /// The one variable-size structure in this format, so it cannot be walked by
@@ -486,7 +520,28 @@ public sealed class NnMaterial
     public int StateOffset { get; init; }
 
     /// <summary>Index into the model's texture list, or null when untextured.</summary>
+    /// <remarks>The base stage. See <see cref="Stages"/> for the rest.</remarks>
     public int? TextureIndex { get; init; }
+
+    /// <summary>
+    /// Every texture stage this material binds, in slot order.
+    /// </summary>
+    /// <remarks>
+    /// The material declares a stage <b>count</b> at <c>+0x14</c> and points at an
+    /// array of <b>32-byte</b> stage records at <c>+0x18</c>. Each record is
+    /// <c>u32 flags</c>, <c>u32 index</c> into the model's texture list, then
+    /// floats. Verified across the build: <b>14,357 stage indices, 0 out of
+    /// range</b>, and the per-count totals sum to the material count exactly —
+    /// 6,967 materials with one stage, 987 with two, 617 with three, 735 with
+    /// four, 125 with five and 336 untextured, which is 9,767.
+    /// <para>
+    /// <b>2,464 materials bind more than one texture</b> and the renderer drew
+    /// only the first, because the decoder read a single index. The engine's own
+    /// shader has nine sampler slots — base, three decals, modulate, add,
+    /// opacity, normal and two user samplers (<c>docs/ORACLES.md</c>).
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<NnTextureStage> Stages { get; init; } = [];
 
     /// <summary>How this material blends over what is already drawn.</summary>
     public MaterialBlend Blend { get; init; }
@@ -535,12 +590,29 @@ public sealed class NnMaterial
                   : MaterialBlend.Alpha;
         }
 
+        // The stage count sits at +0x14 and the array of 32-byte stage records at
+        // +0x18. Reading only the first record is what limited 2,464 multi-textured
+        // materials to their base map.
+        NnTextureStage[] stages = [];
         if (relocations.Contains(offset + 0x18))
         {
             int block = BinaryPrimitives.ReadInt32LittleEndian(data[(at + 0x18)..]);
-            if (block != 0 && NnFile.DataBase + block + 8 <= data.Length)
-                texture = BinaryPrimitives.ReadInt32LittleEndian(
-                    data[(NnFile.DataBase + block + 4)..]);
+            int count = BinaryPrimitives.ReadInt32LittleEndian(data[(at + 0x14)..]);
+            int start = NnFile.DataBase + block;
+            if (block != 0 && count is > 0 and <= 16 &&
+                start + count * NnTextureStage.Size <= data.Length)
+            {
+                stages = new NnTextureStage[count];
+                for (int s = 0; s < count; s++)
+                {
+                    int r = start + s * NnTextureStage.Size;
+                    stages[s] = new NnTextureStage(
+                        BinaryPrimitives.ReadUInt32LittleEndian(data[r..]),
+                        BinaryPrimitives.ReadInt32LittleEndian(data[(r + 4)..]));
+                }
+            }
+            if (block != 0 && start + 8 <= data.Length)
+                texture = BinaryPrimitives.ReadInt32LittleEndian(data[(start + 4)..]);
         }
 
         // The colour block: u32 count, then that many RGBA quads. Count is 2 on
@@ -567,6 +639,7 @@ public sealed class NnMaterial
             ColourOffset = colourOffset,
             StateOffset = BinaryPrimitives.ReadInt32LittleEndian(data[(at + 12)..]),
             TextureIndex = texture,
+            Stages = stages,
             Blend = blend,
             Ambient = ambient,
             Diffuse = diffuse,
