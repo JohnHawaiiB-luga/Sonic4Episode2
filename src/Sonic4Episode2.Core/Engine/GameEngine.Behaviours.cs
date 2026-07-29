@@ -1,9 +1,16 @@
+using Sonic4Episode2.Core.Assets;
+
 namespace Sonic4Episode2.Core.Engine;
 
 public sealed partial class GameEngine
 {
+    private Needles? _needles;
+
     /// <summary>The shared player-damage behaviour.</summary>
     public Damage DamageBehaviour { get; } = new();
+
+    /// <summary>The mounted stage's static spikes.</summary>
+    public Needles? Needles => Stage is null ? null : _needles;
 
     /// <summary>Applies the normal damage transition to the active player.</summary>
     public DamageResult DamagePlayer()
@@ -14,5 +21,21 @@ public sealed partial class GameEngine
         DamageResult result = DamageBehaviour.Apply(Player, RingCount);
         RingCount = result.RingsRemaining;
         return result;
+    }
+
+    private void MountBehaviours(IReadOnlyList<Placement> placements)
+    {
+        _needles = new Needles(placements);
+        Scheduler.Create(
+            "GM_NEEDLE",
+            _ => CheckNeedles(),
+            PriorityObject,
+            group: SceneGroup);
+    }
+
+    private void CheckNeedles()
+    {
+        if (Player is not null && _needles?.Check(Player) == true)
+            DamagePlayer();
     }
 }

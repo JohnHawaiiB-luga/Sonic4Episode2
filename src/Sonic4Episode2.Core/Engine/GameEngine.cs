@@ -285,6 +285,8 @@ public sealed partial class GameEngine
                 : -Collision.Height * Collision.CellSize * 0.1f;
             Player.PlaceOnGround(spawnX, spawnY);
         }
+
+        MountBehaviours(placements);
     }
 
     /// <summary>
