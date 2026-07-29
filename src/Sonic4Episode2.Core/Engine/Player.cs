@@ -171,6 +171,7 @@ public sealed class Player : GameObject
     private bool _jumpHeld;
     private bool _cuttingJump;
     private bool _justLaunched;
+    private int _bumperControlLockFrames;
     // Only a rise that came from the jump button can be cut short. Without this
     // a spring launch with the button up reads as a released jump and gets
     // double gravity - springs would feel weak for an invisible reason.
@@ -196,6 +197,23 @@ public sealed class Player : GameObject
             Velocity.Y -= Gravity;
             if (Velocity.Y < -TerminalVelocity) Velocity.Y = -TerminalVelocity;
             return;
+        }
+
+        if (_bumperControlLockFrames > 0)
+        {
+            if (OnGround)
+            {
+                _bumperControlLockFrames = 0;
+            }
+            else
+            {
+                _bumperControlLockFrames--;
+                _jumpHeld = InputJump;
+                Velocity.Y -= Gravity;
+                if (Velocity.Y < -TerminalVelocity)
+                    Velocity.Y = -TerminalVelocity;
+                return;
+            }
         }
 
         UpdateSpinDash();
@@ -499,6 +517,22 @@ public sealed class Player : GameObject
 
     private int _noFrictionFrames;
 
+    internal void LaunchFromBumper(
+        Vector2 velocity,
+        int controlLockFrames)
+    {
+        ClearActiveMovementSequence();
+        Velocity = velocity;
+        OnGround = false;
+        IsDamaged = false;
+        _bumperControlLockFrames = Math.Max(0, controlLockFrames);
+        _noFrictionFrames = 0;
+        _justLaunched = false;
+        _cuttingJump = false;
+        _jumpRising = false;
+        _jumpHeld = InputJump;
+    }
+
     internal void EnterDamage(float horizontalVelocity, float verticalVelocity,
                               int invincibleFrames)
     {
@@ -524,6 +558,7 @@ public sealed class Player : GameObject
         Rolling = false;
         Charging = false;
         DashPower = 0f;
+        _bumperControlLockFrames = 0;
     }
 
     public void Bounce(float upwardVelocity)
@@ -535,6 +570,7 @@ public sealed class Player : GameObject
         DashPower = 0f;
         _cuttingJump = false;
         _jumpRising = false;
+        _bumperControlLockFrames = 0;
     }
 
     /// <summary>Drops the player onto the first ground below a starting point.</summary>

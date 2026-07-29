@@ -6,6 +6,7 @@ public sealed partial class GameEngine
 {
     private Needles? _needles;
     private Lands? _lands;
+    private Bumpers? _bumpers;
 
     /// <summary>The shared player-damage behaviour.</summary>
     public Damage DamageBehaviour { get; } = new();
@@ -15,6 +16,9 @@ public sealed partial class GameEngine
 
     /// <summary>The mounted stage's moving platforms.</summary>
     public Lands? Lands => Stage is null ? null : _lands;
+
+    /// <summary>The mounted stage's metal bumpers.</summary>
+    public Bumpers? Bumpers => Stage is null ? null : _bumpers;
 
     /// <summary>Applies the normal damage transition to the active player.</summary>
     public DamageResult DamagePlayer()
@@ -33,6 +37,7 @@ public sealed partial class GameEngine
         _lands = Sonic4Episode2.Core.Engine.Lands.FromActArchive(
             _content.Read(ActArchive),
             ActArchive);
+        _bumpers = new Bumpers(placements);
         if (Player is Player player)
         {
             Lands lands = _lands;
@@ -49,11 +54,22 @@ public sealed partial class GameEngine
             _ => CheckNeedles(),
             PriorityObject,
             group: SceneGroup);
+        Scheduler.Create(
+            "GM_BUMPER",
+            _ => CheckBumpers(),
+            PriorityObject,
+            group: SceneGroup);
     }
 
     private void CheckNeedles()
     {
         if (Player is not null && _needles?.Check(Player) == true)
             DamagePlayer();
+    }
+
+    private void CheckBumpers()
+    {
+        if (Player is not null)
+            _bumpers?.Check(Player);
     }
 }
