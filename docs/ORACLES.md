@@ -244,6 +244,37 @@ compiled under different flag combinations. Naming convention is `nngl` +
 | Texture stages | `nngltexBase`, `nngltexDecal`, `nngltexDecal2`, `nngltexDecal3`, `nngltexModulate`, `nngltexAdd`, `nngltexOpacity`, `nngltexNormal`, `nngltexUserSampler2D1/2` |
 | Stage blend levels | `nngluTexBaseDecal123Alpha`, `nngluTexShininessDualParaboloidAddLevel` |
 
+### The texture-role roster (recovered)
+
+Studying how the library is parameterised — not copying it — gives the full set of
+texture roles the engine supports, which is **24**, well beyond the nine sampler
+uniforms visible from the declarations alone. Each is a compile-time option named
+`NNGLD_OPT_TEX_<ROLE>`, aliased inside the shader to a short `DT_*` symbol:
+
+| Role group | Options |
+|---|---|
+| Surface | `BASE`, `DECAL`, `DECAL2`, `DECAL3` |
+| Combine | `MODULATE`, `ADD`, `OPACITY` |
+| Shading | `NORMAL`, `SPECULAR`, `SHININESS` |
+| Reflection | `ENVMASK`, `DUALPARABOLOID` |
+| Spare | `USER1`…`USER8`, `SAMPLER2D2` |
+
+There is a matching per-role texture-coordinate selector (`tc_bn`, `tc_dc1`,
+`tc_dc2`, `tc_dc3`, `tc_ad`, `tc_md`, `tc_em`, `tc_nr` …), each choosing which of
+the eight interpolated coordinate sets that stage samples with. So a role is not
+merely "which texture" but "which texture, sampled by which coordinate set".
+
+**An honest limit, and it decides the next step.** Every one of these options is
+`#define`d in the file to `(-1)` — the *disabled* default. The real value is
+supplied by the engine when it compiles a permutation, so **the source names the
+roles but does not assign their numbers.** Our material stage flags carry a low
+16-bit field (2 = base on 8,808 stages, 4 = environment on 1,255, with 1 and 8
+also present) which looks like a bitmask over this roster, but the mapping is
+**not confirmed** and cannot be closed from this file.
+
+That is precisely the question a frame capture answers — observe which texture
+binds to which sampler for a known material — which is why `apitrace` is staged.
+
 **This independently confirms the matrix palette (beat 58).** `nngluPositionMatrices`
 indexed by `nnglaMtxIdx` and weighted by `nnglaWeight` is precisely the model we
 recovered from `nnCalcMatrixPaletteNode` and implemented in `MatrixPalette.Build`
