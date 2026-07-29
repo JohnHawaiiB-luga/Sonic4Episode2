@@ -8,6 +8,7 @@ public sealed partial class GameEngine
     private Lands? _lands;
     private Bumpers? _bumpers;
     private WaterAreas? _waterAreas;
+    private HariSenbos? _hariSenbos;
 
     /// <summary>The shared player-damage behaviour.</summary>
     public Damage DamageBehaviour { get; } = new();
@@ -23,6 +24,9 @@ public sealed partial class GameEngine
 
     /// <summary>The mounted stage's water-level regions.</summary>
     public WaterAreas? WaterAreas => Stage is null ? null : _waterAreas;
+
+    /// <summary>The mounted stage's classic pufferfish enemies.</summary>
+    public HariSenbos? HariSenbos => Stage is null ? null : _hariSenbos;
 
     /// <summary>Applies the normal damage transition to the active player.</summary>
     public DamageResult DamagePlayer()
@@ -44,6 +48,9 @@ public sealed partial class GameEngine
         _bumpers = new Bumpers(placements);
         _waterAreas =
             Sonic4Episode2.Core.Engine.WaterAreas.FromActArchive(
+                _content.Read(ActArchive));
+        _hariSenbos =
+            Sonic4Episode2.Core.Engine.HariSenbos.FromActArchive(
                 _content.Read(ActArchive));
         if (Player is Player player)
         {
@@ -75,6 +82,11 @@ public sealed partial class GameEngine
             _ => CheckBumpers(),
             PriorityObject,
             group: SceneGroup);
+        Scheduler.Create(
+            "GM_ENE_HARI_SENBO",
+            _ => CheckHariSenbos(),
+            PriorityObject,
+            group: SceneGroup);
     }
 
     private void CheckNeedles()
@@ -87,5 +99,18 @@ public sealed partial class GameEngine
     {
         if (Player is not null)
             _bumpers?.Check(Player);
+    }
+
+    private void CheckHariSenbos()
+    {
+        if (_hariSenbos is null)
+            return;
+        if (Player is null)
+        {
+            _hariSenbos.Step();
+            return;
+        }
+        if (_hariSenbos.Step(Player))
+            DamagePlayer();
     }
 }
