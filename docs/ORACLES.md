@@ -358,6 +358,115 @@ than from the model data.
 the iOS interface. Worth remembering when using iOS as the shader reference: it is
 a *reduced* port, not the same feature set.
 
+## The shading maths, disassembled out of the bytecode
+
+The CTAB names told us which register holds what. Disassembling the instruction
+stream tells us what the shaders *do* with them. **All 1,843 shaders decode
+cleanly** — every instruction's operand tokens consumed exactly, none left over
+and none missing — across 23 distinct pixel opcodes. That completeness is the
+evidence the operand decoding (register-type split across bits 28-30 and 11-12,
+write masks, swizzles) is right.
+
+### `s_texEnvMask` is NOT the environment map
+
+Worth stating first because the name misleads, and the whole multi-texture design
+was nearly built on it. `s_texEnvMask` is a plain **UV-mapped mask** — 167 of 167
+of its fetches use an interpolated coordinate. The actual environment lookup is
+`s_texDualParaboloid`, whose fetches are 31 of 31 **computed**. The two are
+distinguishable structurally: an environment lookup is a `texld` whose coordinate
+operand is a temp register rather than an interpolant.
+
+The 167 mask shaders partition exactly: **28** pair it with a dual-paraboloid
+environment, **137** use it with no environment lookup at all (it drives a decal
+lerp), and **2** pair it with a sphere map.
+
+### The environment combine is ADDITIVE
+
+```
+envTerm.rgb = envTexel.rgb * envMask.r * u_TexDualParaboloidLevel.x
+shaded.rgb  = saturate(baseTexel.rgb * lighting.rgb + envTerm.rgb)
+out.rgb     = lerp(u_Fog.rgb, shaded.rgb, fogFactor)
+out.a       = baseTexel.a * u_TexBaseAlpha.x * vertexColour.a
+```
+
+Unanimous across all 31, and established two independent ways. **Structurally**,
+every environment chain ends in a single `mad` with the environment as the addend.
+**Numerically**, measuring `d(out)/d(envTexel)` with the base texel at 0.30 and
+again at 0.60 gives an identical gain — the signature of an addition, since a
+multiply would have doubled it. The measured gain of exactly `0.04000` equals
+`mask (0.5) × level (0.2) × fog (0.4)`, which confirms the whole scale chain at
+once. **No lerp and no fresnel anywhere**: no dot product, no `pow`, no `1-x` term
+feeds the environment contribution in any of the 31. Alpha is untouched in 31/31.
+
+Two things scale it and nothing else: **`s_texEnvMask` red channel only** (all 167
+read `.x`; halving the mask exactly halves the gain) and
+**`u_TexDualParaboloidLevel.x`** (doubling it exactly doubles the gain, 31/31).
+The mask is optional — 3 shaders drop it and use the level alone.
+
+### The environment UV is a reflection, computed in the pixel shader
+
+The vertex shader supplies only raw vectors: eye-space position with the fog
+factor packed in `.w`, and the eye-space normal via `u_NormalMatrix`. The
+projection is entirely pixel-side.
+
+```
+I   = normalize(eyePosition)
+R   = I - 2*dot(I,N)*N
+R'  = u_DualParaboloidMatrix * R
+den = |R'.z| + 1
+s   = ( R'.x/den + 1) * 0.5
+t   = (-R'.y/den + 1) * 0.5
+u   = (R'.z >= 0 ? -0.5 : +0.5) * s      -- this sign is the one unconfirmed step
+uv  = (u, t)
+```
+
+Verified numerically on all 31, both hemisphere branches exercised in each. The
+disassembly falls into **9 different instruction schedulings** with different
+write masks and swizzles, and that they all collapse to one formula is itself
+independent evidence the decoding is correct.
+
+A second path exists: **12 shaders are sphere-map / matcap**, feeding reflection
+coordinates to `s_texBase` itself — there is no separate diffuse map, the base
+slot *is* the reflection, so it modulates lighting like any base map. The UV is
+the classic OpenGL `SPHERE_MAP` with V flipped, verified 12/12:
+
+```
+m = sqrt(R.x² + R.y² + (R.z+1)²);  s = R.x/m*0.5 + 0.5;  t = -R.y/m*0.5 + 0.5
+```
+
+And the **decal path**, verified 137/137 by differential test:
+
+```
+blend = envMask.r * decalTexel.a * u_TexDecalAlpha.x
+rgb   = lerp(baseTexel.rgb, decalTexel.rgb, blend)
+```
+
+### Read indices per shader, never hardcode them
+
+The mask's UVs come from `u_TextureMatrix[k]` applied affinely, in 167/167 — but
+**`k` varies per shader**: 3 (75x), 4 (59x), 2 (32x), 1 (1x), while the base map
+uses element 0 (574x) or 1 (202x). The same caveat applies to sampler registers:
+`s_texBase` sits at s0 in 582 shaders and s1 in 207, and `s_texNormal` is pinned
+at s0 in all 215 that declare it. **The register a texture lands in is a property
+of the shader permutation, not of the texture.** Any code that assumes a fixed
+slot per role is wrong.
+
+### Still unknown, stated plainly
+
+- **Which half of the paraboloid atlas is the front hemisphere.** The `±0.5`
+  selection rests on the documented D3D9 `cmp` rule, which both the interpreter
+  and the reference formula assume, so that one sign is not independently
+  confirmed by the numerical agreement. Everything else in the projection is.
+- **The runtime value of `u_DualParaboloidMatrix`.** Its shape is known — a 3x3
+  rotating view space into the environment map's frame — but the CPU-side value
+  was never observed.
+- **The physical layout of the dual-paraboloid texture.** A single atlas with the
+  hemispheres side by side is INFERRED from the `u = ±0.5·s` packing and wrap
+  addressing, not confirmed by opening one.
+- **`s_texUserSampler2D1` / `2`** (37 and 36 shaders, many with computed
+  coordinates) — not investigated. Possibly further projection or environment
+  paths.
+
 **It also killed a candidate, correctly.** The gameplay capture showed `c13`
 invariant at `(0, 1, 0, 0)`, which looked like a fixed light direction. CTAB places
 `c13` inside `u_Fog` (c10..c14). Had that been claimed rather than flagged, a fog

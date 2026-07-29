@@ -104,8 +104,9 @@ public sealed class TileMesh
     public required float[] Positions { get; init; }      // xyz triples
     public required float[] TexCoords { get; init; }      // uv pairs
     public required int[] Indices { get; init; }
-    public required string?[] TriangleTextures { get; init; }
-    public required MaterialBlend[] TriangleBlends { get; init; }
+
+    /// <summary>The material each triangle draws with — its whole texture set.</summary>
+    public required MaterialKey[] TriangleMaterials { get; init; }
 
     /// <summary>
     /// Per-vertex normals, xyz triples. Zero-length when the model carries none.
@@ -157,8 +158,7 @@ public sealed class TileMesh
         var texCoords = new List<float>();
         var normals = new List<float>();
         var indices = new List<int>();
-        var textures = new List<string?>();
-        var blends = new List<MaterialBlend>();
+        var materials = new List<MaterialKey>();
 
         float cx = model.Header.CenterX, cy = model.Header.CenterY, cz = model.Header.CenterZ;
 
@@ -246,16 +246,15 @@ public sealed class TileMesh
                 normals.Add(n.Z);
             }
 
-            string? texture = model.TextureFor(mesh);
-            MaterialBlend blend = model.BlendFor(mesh);
+            var material = new MaterialKey(model.TexturesFor(mesh), model.BlendFor(mesh),
+                                           model.DiffuseFor(mesh));
             foreach (var (a, b, c) in model.PrimitiveLists[mesh.PrimitiveListIndex].Triangles())
             {
                 if (a >= vertexList.Count || b >= vertexList.Count || c >= vertexList.Count) continue;
                 indices.Add(baseIndex + a);
                 indices.Add(baseIndex + b);
                 indices.Add(baseIndex + c);
-                textures.Add(texture);
-                blends.Add(blend);
+                materials.Add(material);
             }
         }
 
@@ -265,17 +264,72 @@ public sealed class TileMesh
             TexCoords = [.. texCoords],
             Normals = [.. normals],
             Indices = [.. indices],
-            TriangleTextures = [.. textures],
-            TriangleBlends = [.. blends],
+            TriangleMaterials = [.. materials],
         };
     }
 }
 
-/// <summary>Accumulated stage geometry in world space, grouped by texture.</summary>
+/// <summary>What one draw batch draws with: a texture set and a blend mode.</summary>
+/// <remarks>
+/// <para>
+/// The engine's own renderer binds <b>up to four sampler slots</b> and the frame
+/// capture caught it using three nested configurations. The slot <i>numbers</i>
+/// are not reproduced here on purpose: reading every shader's <c>CTAB</c> shows
+/// the register a texture lands in is a property of the shader permutation, not
+/// of the texture — <c>s_texBase</c> sits at s0 in 582 shaders and s1 in 207,
+/// while <c>s_texNormal</c> is pinned at s0 in all 215 that declare it. So the
+/// durable fact is the <b>set of roles</b> a material binds, and our own effect
+/// is free to assign its own registers.
+/// </para>
+/// <para>
+/// Blend rides in the key because it is per material and has to split batches
+/// exactly as the texture set does — that is what keeps godrays and shine
+/// glowing rather than sitting flat.
+/// </para>
+/// </remarks>
+/// <param name="Textures">Every texture the material binds, by role.</param>
+/// <param name="Blend">How it blends over what is already drawn.</param>
+/// <param name="Diffuse">
+/// The colour modulating the base map. White on 87.6% of materials, but its
+/// <b>alpha carries per-material transparency</b> — 0.0, 0.25, 0.41, 0.6 and 0.98
+/// all occur — so it has to split batches alongside the textures rather than
+/// being applied uniformly.
+/// </param>
+public readonly record struct MaterialKey(
+    MaterialTextures Textures, MaterialBlend Blend,
+    (float R, float G, float B, float A) Diffuse)
+{
+    /// <summary>The diffuse map, or null when the material is untextured.</summary>
+    public string? Base => Textures.Base;
+
+    /// <summary>The reflection map, or null.</summary>
+    public string? Environment => Textures.Environment;
+
+    /// <summary>The normal map, or null.</summary>
+    public string? Normal => Textures.Normal;
+
+    /// <summary>The specular map, or null.</summary>
+    public string? Specular => Textures.Specular;
+
+    /// <summary>Whether this batch wants the additive blend state.</summary>
+    public bool IsAdditive => Blend == MaterialBlend.Additive;
+
+    /// <summary>Whether anything beyond the base map is bound.</summary>
+    public bool IsMultiTexture => Textures.IsMultiTexture;
+
+    /// <summary>A key binding one texture with ordinary transparency.</summary>
+    public static MaterialKey FromBase(string? name) =>
+        new(new MaterialTextures(name, null, null, null), MaterialBlend.Alpha, White);
+
+    /// <summary>"Show the texture unchanged", which is what 87.6% ask for.</summary>
+    public static (float R, float G, float B, float A) White => (1f, 1f, 1f, 1f);
+}
+
+/// <summary>Accumulated stage geometry in world space, grouped by material.</summary>
 /// <remarks>
 /// Grouping happens here rather than in the renderer because a stage draws from
-/// dozens of textures and thousands of tiles: sorting once at build time turns
-/// what would be a per-tile texture switch into one draw call per texture.
+/// dozens of materials and thousands of tiles: sorting once at build time turns
+/// what would be a per-tile state switch into one draw call per material.
 /// </remarks>
 public sealed class StageBatch
 {
@@ -288,24 +342,24 @@ public sealed class StageBatch
     public List<int> Indices { get; } = [];
 
     /// <summary>
-    /// Index ranges keyed by texture, with additive materials under a key
-    /// prefixed <c>+</c>.
+    /// Index ranges keyed by the whole material — every texture it binds, plus
+    /// its blend mode.
     /// </summary>
     /// <remarks>
-    /// The prefix keeps the additive triangles in their own draw group so the
-    /// renderer can switch to an additive blend state for them — that is what
-    /// makes godrays and shine glow rather than sit flat.
+    /// <para>
+    /// This used to key on a single texture name with a <c>+</c> prefix marking
+    /// additive materials. That could only ever draw the base map, which
+    /// discarded the 1,322 environment stages and 230 normal maps the models
+    /// carry. Keying on the set means a batch is a material, and the renderer can
+    /// bind every slot it asks for and pick a technique to match.
+    /// </para>
+    /// <para>
+    /// Grouping still happens here rather than in the renderer, for the same
+    /// reason as before: sorting once at build time turns a per-tile state switch
+    /// into one draw per material.
+    /// </para>
     /// </remarks>
-    public Dictionary<string, List<int>> IndicesByTexture { get; } = [];
-
-    /// <summary>The additive-blend prefix on a batch key.</summary>
-    public const char AdditivePrefix = '+';
-
-    /// <summary>Whether a batch key names an additive-blend group.</summary>
-    public static bool IsAdditive(string key) => key.Length > 0 && key[0] == AdditivePrefix;
-
-    /// <summary>The texture name of a batch key, without the blend prefix.</summary>
-    public static string TextureOf(string key) => IsAdditive(key) ? key[1..] : key;
+    public Dictionary<MaterialKey, List<int>> IndicesByMaterial { get; } = [];
 
     public float MinX { get; private set; } = float.MaxValue;
     public float MaxX { get; private set; } = float.MinValue;
@@ -347,13 +401,11 @@ public sealed class StageBatch
             if (y > MaxY) MaxY = y;
         }
 
-        for (int t = 0; t < mesh.TriangleTextures.Length; t++)
+        for (int t = 0; t < mesh.TriangleMaterials.Length; t++)
         {
-            string key = mesh.TriangleTextures[t] ?? "";
-            if (t < mesh.TriangleBlends.Length && mesh.TriangleBlends[t] == MaterialBlend.Additive)
-                key = AdditivePrefix + key;
-            if (!IndicesByTexture.TryGetValue(key, out var list))
-                IndicesByTexture[key] = list = [];
+            var key = mesh.TriangleMaterials[t];
+            if (!IndicesByMaterial.TryGetValue(key, out var list))
+                IndicesByMaterial[key] = list = [];
             for (int k = 0; k < 3; k++)
             {
                 int index = baseIndex + mesh.Indices[t * 3 + k];

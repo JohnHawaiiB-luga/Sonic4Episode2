@@ -91,7 +91,33 @@ public sealed class NnModel
     public string? TextureFor(NnMeshSet mesh)
     {
         if (mesh.MaterialIndex < 0 || mesh.MaterialIndex >= Materials.Count) return null;
-        int? index = Materials[mesh.MaterialIndex].TextureIndex;
+        return Resolve(Materials[mesh.MaterialIndex].TextureIndex);
+    }
+
+    /// <summary>
+    /// Every texture a mesh set binds, by the role its material gives it.
+    /// </summary>
+    /// <remarks>
+    /// This is what lets the renderer draw the 1,322 environment maps it used to
+    /// discard: a batch keys on the whole set rather than on the base map alone.
+    /// Roles come from the stage flag word and are verified against the texture
+    /// names — see <see cref="TextureRole"/>.
+    /// </remarks>
+    public MaterialTextures TexturesFor(NnMeshSet mesh)
+    {
+        if (mesh.MaterialIndex < 0 || mesh.MaterialIndex >= Materials.Count)
+            return default;
+
+        var material = Materials[mesh.MaterialIndex];
+        return new MaterialTextures(
+            Resolve(material.TextureIndex),
+            Resolve(material.IndexFor(TextureRole.Environment)),
+            Resolve(material.IndexFor(TextureRole.Normal)),
+            Resolve(material.IndexFor(TextureRole.Specular)));
+    }
+
+    private string? Resolve(int? index)
+    {
         if (index is null || index < 0 || index >= TextureNames.Count) return null;
         string name = TextureNames[index.Value];
         return name.Length == 0 ? null : name;
@@ -102,6 +128,12 @@ public sealed class NnModel
         mesh.MaterialIndex >= 0 && mesh.MaterialIndex < Materials.Count
             ? Materials[mesh.MaterialIndex].Blend
             : MaterialBlend.Alpha;
+
+    /// <summary>The colour modulating a mesh set's base map, white by default.</summary>
+    public (float R, float G, float B, float A) DiffuseFor(NnMeshSet mesh) =>
+        mesh.MaterialIndex >= 0 && mesh.MaterialIndex < Materials.Count
+            ? Materials[mesh.MaterialIndex].Diffuse
+            : (1f, 1f, 1f, 1f);
 
     /// <summary>Total triangles across every mesh set, validating indices as it goes.</summary>
     public int CountTriangles()
@@ -155,4 +187,26 @@ public sealed class NnModel
         }
         return result;
     }
+}
+
+/// <summary>Every texture one material binds, resolved to names by role.</summary>
+/// <remarks>
+/// A value type so it can key a draw batch directly: two mesh sets belong in the
+/// same batch when they bind the same textures in the same roles.
+/// </remarks>
+/// <param name="Base">The diffuse map. Null on the 336 untextured materials.</param>
+/// <param name="Environment">The reflection map, on 1,322 stages.</param>
+/// <param name="Normal">The normal map, on 230 stages.</param>
+/// <param name="Specular">The specular map, on 65 stages.</param>
+public readonly record struct MaterialTextures(
+    string? Base, string? Environment, string? Normal, string? Specular)
+{
+    /// <summary>How many live textures this material binds.</summary>
+    public int Count =>
+        (Base is null ? 0 : 1) + (Environment is null ? 0 : 1) +
+        (Normal is null ? 0 : 1) + (Specular is null ? 0 : 1);
+
+    /// <summary>Whether anything beyond the base map is bound.</summary>
+    public bool IsMultiTexture =>
+        Environment is not null || Normal is not null || Specular is not null;
 }

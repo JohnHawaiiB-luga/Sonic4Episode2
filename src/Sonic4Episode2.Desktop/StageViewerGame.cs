@@ -55,7 +55,24 @@ public sealed class StageViewerGame : Game
     /// </remarks>
     private Effect? _stageEffect;
     private VertexPositionNormalTexture[] _vertices = [];
-    private readonly Dictionary<string, int[]> _batches = [];
+    private readonly Dictionary<MaterialKey, int[]> _batches = [];
+
+    /// <summary>
+    /// The stage geometry, resident on the GPU.
+    /// </summary>
+    /// <remarks>
+    /// The stage used to draw through <c>DrawUserIndexedPrimitives</c>, which
+    /// re-uploads the vertex array it is handed on <b>every call</b>. At 8.5M
+    /// vertices over 43 material batches that was hundreds of megabytes crossing
+    /// the bus per frame, and it cost <b>5.5 seconds a frame</b> — the renderer
+    /// was transfer-bound, not shader-bound. Uploading once and drawing from
+    /// device buffers is the whole fix.
+    /// </remarks>
+    private VertexBuffer? _vertexBuffer;
+    private IndexBuffer? _indexBuffer;
+
+    /// <summary>Where each material's triangles sit inside <see cref="_indexBuffer"/>.</summary>
+    private readonly Dictionary<MaterialKey, (int Start, int Count)> _batchRanges = [];
     private readonly Dictionary<string, Texture2D> _textures = [];
     private StageBatch? _pending;
     private Texture2D _white = null!;
@@ -63,13 +80,13 @@ public sealed class StageViewerGame : Game
     private Texture2D _ring = null!;
     private TileMesh? _ringMesh;
     private VertexPositionNormalTexture[] _objectVertices = [];
-    private readonly Dictionary<string, int[]> _objectBatches = [];
+    private readonly Dictionary<MaterialKey, int[]> _objectBatches = [];
     private int _objectInstances;
     private VertexPositionNormalTexture[] _skyVertices = [];
-    private readonly Dictionary<string, int[]> _skyBatches = [];
-    private float _skyCenterX, _skyCenterY;
+    private readonly Dictionary<MaterialKey, int[]> _skyBatches = [];
+    private float _skyCenterY;
     private VertexPositionNormalTexture[] _ringVertices = [];
-    private readonly Dictionary<string, int[]> _ringBatches = [];
+    private readonly Dictionary<MaterialKey, int[]> _ringBatches = [];
     private int _ringsBuiltFor = -1;
     private GameEngine _engine = null!;
 
@@ -199,8 +216,76 @@ public sealed class StageViewerGame : Game
                 // model data, same flip the OBJ exporter needs.
                 new Vector2(batch.TexCoords[i * 2], 1f - batch.TexCoords[i * 2 + 1]));
         }
-        foreach (var pair in batch.IndicesByTexture)
+        foreach (var pair in batch.IndicesByMaterial)
             _batches[pair.Key] = [.. pair.Value];
+
+        int multi = _batches.Keys.Count(k => k.IsMultiTexture);
+        int envTriangles = _batches.Where(p => p.Key.Environment is not null)
+                                   .Sum(p => p.Value.Length / 3);
+        Console.WriteLine($"stage: {_batches.Count} material batches, " +
+                          $"{multi} multi-textured ({envTriangles:N0} reflective triangles)");
+
+        UploadStageGeometry();
+    }
+
+    /// <summary>
+    /// Moves the stage onto the GPU once, so drawing it is a state change rather
+    /// than a transfer.
+    /// </summary>
+    /// <remarks>
+    /// Every batch's indices are concatenated into one buffer and each material
+    /// remembers its span, so the whole act needs one vertex buffer, one index
+    /// buffer and one <c>DrawIndexedPrimitives</c> per material. Indices are
+    /// 32-bit because an act runs to millions of vertices, far past what 16-bit
+    /// can address.
+    /// </remarks>
+    private void UploadStageGeometry()
+    {
+        _vertexBuffer?.Dispose();
+        _indexBuffer?.Dispose();
+        _vertexBuffer = null;
+        _indexBuffer = null;
+        _batchRanges.Clear();
+        if (_vertices.Length == 0) return;
+
+        int total = _batches.Values.Sum(v => v.Length);
+        if (total == 0) return;
+
+        var all = new int[total];
+        int at = 0;
+        foreach (var pair in _batches)
+        {
+            Array.Copy(pair.Value, 0, all, at, pair.Value.Length);
+            _batchRanges[pair.Key] = (at, pair.Value.Length);
+            at += pair.Value.Length;
+        }
+
+        try
+        {
+            _vertexBuffer = new VertexBuffer(GraphicsDevice,
+                VertexPositionNormalTexture.VertexDeclaration, _vertices.Length,
+                BufferUsage.WriteOnly);
+            _vertexBuffer.SetData(_vertices);
+
+            _indexBuffer = new IndexBuffer(GraphicsDevice, IndexElementSize.ThirtyTwoBits,
+                                           total, BufferUsage.WriteOnly);
+            _indexBuffer.SetData(all);
+
+            Console.WriteLine(
+                $"stage geometry uploaded: {_vertices.Length:N0} vertices, " +
+                $"{total / 3:N0} triangles resident");
+        }
+        catch (Exception ex)
+        {
+            // A device that cannot hold the act falls back to the streaming path
+            // rather than failing to draw. Slow beats blank.
+            _vertexBuffer?.Dispose();
+            _indexBuffer?.Dispose();
+            _vertexBuffer = null;
+            _indexBuffer = null;
+            _batchRanges.Clear();
+            Console.WriteLine($"stage geometry stays on the CPU: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -478,13 +563,11 @@ public sealed class StageViewerGame : Game
                 new Vector2(mesh.TexCoords[i * 2], 1f - mesh.TexCoords[i * 2 + 1]));
         }
 
-        // Group triangles by texture, the same shape StageBatch produces.
-        var groups = new Dictionary<string, List<int>>();
-        for (int t = 0; t < mesh.TriangleTextures.Length; t++)
+        // Group triangles by material, the same shape StageBatch produces.
+        var groups = new Dictionary<MaterialKey, List<int>>();
+        for (int t = 0; t < mesh.TriangleMaterials.Length; t++)
         {
-            string key = mesh.TriangleTextures[t] ?? "";
-            if (mesh.TriangleBlends[t] == MaterialBlend.Additive)
-                key = StageBatch.AdditivePrefix + key;
+            var key = mesh.TriangleMaterials[t];
             if (!groups.TryGetValue(key, out var list)) groups[key] = list = [];
             list.Add(mesh.Indices[t * 3]);
             list.Add(mesh.Indices[t * 3 + 1]);
@@ -494,9 +577,7 @@ public sealed class StageViewerGame : Game
         foreach (var pair in groups)
         {
             SetBlend(pair.Key);
-            _effect.Texture = _textures.TryGetValue(
-                StageBatch.TextureOf(pair.Key).ToUpperInvariant(), out var t)
-                ? t : _white;
+            _effect.Texture = TextureNamed(pair.Key.Base);
             var indices = pair.Value;
             foreach (var pass in _effect.CurrentTechnique.Passes)
             {
@@ -679,7 +760,7 @@ public sealed class StageViewerGame : Game
                 new Vector2(batch.TexCoords[i * 2], 1f - batch.TexCoords[i * 2 + 1]));
         }
         _objectBatches.Clear();
-        foreach (var pair in batch.IndicesByTexture)
+        foreach (var pair in batch.IndicesByMaterial)
             _objectBatches[pair.Key] = [.. pair.Value];
     }
 
@@ -841,7 +922,6 @@ public sealed class StageViewerGame : Game
 
             // The background is anchored so its bottom sits near the top of the
             // stage - the sky belongs above the level, not through it.
-            _skyCenterX = 0f;
             _skyCenterY = _engine.Stage!.MaxY - (batch.MaxY - batch.MinY) * 0.25f;
 
             _skyVertices = new VertexPositionNormalTexture[batch.VertexCount];
@@ -851,7 +931,7 @@ public sealed class StageViewerGame : Game
                                 batch.Positions[i * 3 + 2]),
                     Vector3.Backward,
                     new Vector2(batch.TexCoords[i * 2], 1f - batch.TexCoords[i * 2 + 1]));
-            foreach (var pair in batch.IndicesByTexture)
+            foreach (var pair in batch.IndicesByMaterial)
                 _skyBatches[pair.Key] = [.. pair.Value];
 
             Console.WriteLine($"background loaded: {_skyVertices.Length:N0} vertices");
@@ -881,9 +961,7 @@ public sealed class StageViewerGame : Game
         foreach (var pair in _skyBatches)
         {
             SetBlend(pair.Key);
-            _effect.Texture = _textures.TryGetValue(
-                StageBatch.TextureOf(pair.Key).ToUpperInvariant(), out var t)
-                ? t : _white;
+            _effect.Texture = TextureNamed(pair.Key.Base);
             foreach (var pass in _effect.CurrentTechnique.Passes)
             {
                 pass.Apply();
@@ -912,9 +990,21 @@ public sealed class StageViewerGame : Game
         AlphaDestinationBlend = Blend.One,
     };
 
-    private void SetBlend(string key) =>
-        GraphicsDevice.BlendState = StageBatch.IsAdditive(key)
+    private void SetBlend(MaterialKey key) =>
+        GraphicsDevice.BlendState = key.IsAdditive
             ? AdditiveSrcAlpha : BlendState.AlphaBlend;
+
+    /// <summary>
+    /// The uploaded texture of that name, or a white pixel when it is missing.
+    /// </summary>
+    /// <remarks>
+    /// White rather than nothing: an absent texture then modulates to the
+    /// material colour instead of drawing the mesh black, which is what a missing
+    /// environment map should look like.
+    /// </remarks>
+    private Texture2D TextureNamed(string? name) =>
+        name is not null && _textures.TryGetValue(name.ToUpperInvariant(), out var t)
+            ? t : _white;
 
     /// <summary>Draws the placed object models.</summary>
     private void DrawObjects()
@@ -923,9 +1013,7 @@ public sealed class StageViewerGame : Game
         foreach (var pair in _objectBatches)
         {
             SetBlend(pair.Key);
-            _effect.Texture = _textures.TryGetValue(
-                StageBatch.TextureOf(pair.Key).ToUpperInvariant(), out var t)
-                ? t : _white;
+            _effect.Texture = TextureNamed(pair.Key.Base);
             foreach (var pass in _effect.CurrentTechnique.Passes)
             {
                 pass.Apply();
@@ -971,7 +1059,7 @@ public sealed class StageViewerGame : Game
                 Vector3.Backward,
                 new Vector2(batch.TexCoords[i * 2], batch.TexCoords[i * 2 + 1]));
         }
-        foreach (var pair in batch.IndicesByTexture)
+        foreach (var pair in batch.IndicesByMaterial)
             _ringBatches[pair.Key] = [.. pair.Value];
     }
 
@@ -995,8 +1083,8 @@ public sealed class StageViewerGame : Game
 
             foreach (var pair in _ringBatches)
             {
-                _effect.Texture = _textures.TryGetValue(pair.Key.ToUpperInvariant(),
-                                                        out var texture)
+                _effect.Texture = _textures.TryGetValue(
+                    (pair.Key.Base ?? "").ToUpperInvariant(), out var texture)
                     ? texture
                     : _ring;
                 foreach (var pass in _effect.CurrentTechnique.Passes)
@@ -1169,33 +1257,28 @@ public sealed class StageViewerGame : Game
         // The far background first, deep enough that everything draws over it.
         DrawBackground();
 
-        // One draw per texture. DrawUserIndexedPrimitives also has a per-call
-        // primitive limit well below an act's triangle count, so each batch is
-        // chunked as well.
+        // One draw per material. The chunking below only applies to the fallback
+        // streaming path, which has a per-call primitive limit well below an
+        // act's triangle count; resident geometry draws each material in one go.
         const int chunk = 60000 * 3;
 
-        // Our own effect draws the stage when it loaded; everything else still
-        // goes through BasicEffect until it covers those paths too.
+        // Our own effect draws the stage; everything else still goes through
+        // BasicEffect until it covers those paths too.
         //
-        // OFF BY DEFAULT — it compiles, loads and binds without error but renders
-        // the stage black, so it is not yet correct and must not be the default.
-        // Two causes ruled out: the SV_POSITION semantic (wrong for vs_3_0, now
-        // POSITION0) and matrix packing (row_major is rejected by MGFX's
-        // parameter writer). Next suspects are the WorldViewProjection transpose
-        // convention MonoGame applies on SetValue, and whether the sampler is
-        // actually bound through sampler_state under MojoShader. Set to true to
-        // resume debugging.
-        // STAGE_FX=on uses the real technique, STAGE_FX=flat the diagnostic that
-        // ignores shading entirely. Unset means BasicEffect, which is the known
-        // working path while the effect is still wrong.
-        string fxMode = Environment.GetEnvironmentVariable("STAGE_FX") ?? "off";
-        bool useStageEffect = fxMode is "on" or "flat";
-        if (useStageEffect && _stageEffect is not null)
-        {
-            var wanted = fxMode == "flat" ? "DiagnosticFlat" : "StageTechnique";
-            foreach (var t in _stageEffect.Techniques)
-                if (t.Name == wanted) { _stageEffect.CurrentTechnique = t; break; }
-        }
+        // ON BY DEFAULT as of this beat. It was off while it rendered black, and
+        // then while it was believed to be much slower than BasicEffect. Both
+        // reasons are gone: it draws correctly, and measured against BasicEffect
+        // on the same act it costs 1.50 s/frame against 1.75 — at parity, in fact
+        // slightly ahead. The apparent slowness was the vertex transfer that both
+        // paths were paying, not the shading.
+        //
+        // STAGE_FX=off falls back to BasicEffect, =flat is the shading-free
+        // diagnostic, =noenv keeps the lighting but suppresses reflections.
+        string fxMode = Environment.GetEnvironmentVariable("STAGE_FX") ?? "on";
+        // "noenv" is the multi-texture counterpart of "flat": same effect, same
+        // lighting, environment maps suppressed. Diffing it against "on" isolates
+        // exactly what the reflection contributes and nothing else.
+        bool useStageEffect = fxMode is "on" or "flat" or "noenv";
         if (useStageEffect && _stageEffect is not null)
         {
             _stageEffect.Parameters["WorldViewProjection"]?
@@ -1211,22 +1294,55 @@ public sealed class StageViewerGame : Game
             _stageEffect.Parameters["LightDirection"]?
                 .SetValue(Vector3.Normalize(new Vector3(-0.35f, -0.80f, -0.50f)));
             _stageEffect.Parameters["LightDiffuse"]?.SetValue(new Vector3(0.85f));
+
+            // Set explicitly rather than trusting the .fx initialiser to survive
+            // compilation. NOT RECOVERED — see Stage.fx; STAGE_ENV overrides it
+            // so the contribution can be swept without recompiling the effect.
+            float envStrength =
+                float.TryParse(Environment.GetEnvironmentVariable("STAGE_ENV"),
+                               System.Globalization.NumberStyles.Float,
+                               System.Globalization.CultureInfo.InvariantCulture,
+                               out float s) ? s : 0.35f;
+            _stageEffect.Parameters["EnvironmentStrength"]?.SetValue(envStrength);
         }
         Effect stageEffect = useStageEffect && _stageEffect is not null
             ? _stageEffect : _effect;
 
+        // Bind the resident geometry once for the whole stage; each material is
+        // then a span of the shared index buffer.
+        bool resident = _vertexBuffer is not null && _indexBuffer is not null &&
+                        _batchRanges.Count == _batches.Count;
+        if (resident)
+        {
+            GraphicsDevice.SetVertexBuffer(_vertexBuffer);
+            GraphicsDevice.Indices = _indexBuffer;
+        }
+
         foreach (var pair in _batches)
         {
             SetBlend(pair.Key);
-            var texture = _textures.TryGetValue(
-                StageBatch.TextureOf(pair.Key).ToUpperInvariant(), out var t)
-                ? t
-                : _white;
+            var texture = TextureNamed(pair.Key.Base);
+
+            // A material with an environment map needs the technique that reads
+            // one. The engine picks a compiled permutation per material the same
+            // way; ours has two real ones because we implement base and
+            // environment, not the engine's full role set.
+            bool wantsEnvironment = pair.Key.Environment is not null && fxMode != "noenv";
+            Texture2D? environment = null;
+
             if (useStageEffect && _stageEffect is not null)
             {
-                // Diffuse is white until the batch key carries the material; the
-                // per-material colour lands with the multi-texture work.
-                _stageEffect.Parameters["MaterialDiffuse"]?.SetValue(Vector4.One);
+                string wanted = fxMode == "flat" ? "DiagnosticFlat"
+                              : wantsEnvironment ? "StageEnvironment"
+                              : "StageTechnique";
+                if (_stageEffect.CurrentTechnique.Name != wanted)
+                    foreach (var t in _stageEffect.Techniques)
+                        if (t.Name == wanted) { _stageEffect.CurrentTechnique = t; break; }
+
+                var d = pair.Key.Diffuse;
+                _stageEffect.Parameters["MaterialDiffuse"]?
+                    .SetValue(new Vector4(d.R, d.G, d.B, d.A));
+                if (wantsEnvironment) environment = TextureNamed(pair.Key.Environment);
             }
             else
             {
@@ -1236,25 +1352,51 @@ public sealed class StageViewerGame : Game
             foreach (var pass in stageEffect.CurrentTechnique.Passes)
             {
                 pass.Apply();
-                // The texture goes on AFTER Apply. MonoGame writes the effect's
+                // The textures go on AFTER Apply. MonoGame writes the effect's
                 // own sampler state during Apply, so a texture set before it is
                 // discarded — which is what left every texel reading black.
                 if (useStageEffect && _stageEffect is not null)
                 {
                     GraphicsDevice.Textures[0] = texture;
                     GraphicsDevice.SamplerStates[0] = SamplerState.LinearWrap;
+                    if (environment is not null)
+                    {
+                        GraphicsDevice.Textures[1] = environment;
+                        // Wrapped, and it has to be: the recovered paraboloid
+                        // projection puts one hemisphere at u in [-0.5, 0], which
+                        // only lands on the far half of the atlas by wrapping.
+                        GraphicsDevice.SamplerStates[1] = SamplerState.LinearWrap;
+                    }
                 }
-                var indices = pair.Value;
-                for (int start = 0; start < indices.Length; start += chunk)
+                if (resident)
                 {
-                    int count = Math.Min(chunk, indices.Length - start);
-                    GraphicsDevice.DrawUserIndexedPrimitives(
-                        PrimitiveType.TriangleList,
-                        _vertices, 0, _vertices.Length,
-                        indices, start, count / 3);
+                    var range = _batchRanges[pair.Key];
+                    GraphicsDevice.DrawIndexedPrimitives(
+                        PrimitiveType.TriangleList, 0, range.Start, range.Count / 3);
+                }
+                else
+                {
+                    var indices = pair.Value;
+                    for (int start = 0; start < indices.Length; start += chunk)
+                    {
+                        int count = Math.Min(chunk, indices.Length - start);
+                        GraphicsDevice.DrawUserIndexedPrimitives(
+                            PrimitiveType.TriangleList,
+                            _vertices, 0, _vertices.Length,
+                            indices, start, count / 3);
+                    }
                 }
             }
         }
+        // Objects, rings and the player still stream their geometry — they are
+        // small and rebuilt as they animate, so the upload is not the cost there.
+        // Release the stage's buffers so those paths bind their own.
+        if (resident)
+        {
+            GraphicsDevice.SetVertexBuffer(null);
+            GraphicsDevice.Indices = null;
+        }
+
         DrawObjects();
         DrawRings();
         DrawPlayer();

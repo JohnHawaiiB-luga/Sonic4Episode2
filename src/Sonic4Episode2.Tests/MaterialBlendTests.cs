@@ -35,9 +35,37 @@ public class MaterialBlendTests
     [Fact]
     public void AdditiveTrianglesGetTheirOwnBatchKey()
     {
-        Assert.True(StageBatch.IsAdditive("+SHINE.DDS"));
-        Assert.False(StageBatch.IsAdditive("STONE.DDS"));
-        Assert.Equal("SHINE.DDS", StageBatch.TextureOf("+SHINE.DDS"));
-        Assert.Equal("STONE.DDS", StageBatch.TextureOf("STONE.DDS"));
+        var glow = new MaterialKey(new MaterialTextures("SHINE.DDS", null, null, null),
+                                   MaterialBlend.Additive, MaterialKey.White);
+        var solid = MaterialKey.FromBase("SHINE.DDS");
+
+        Assert.True(glow.IsAdditive);
+        Assert.False(solid.IsAdditive);
+
+        // Same texture, different blend, so they must not share a batch.
+        Assert.NotEqual(glow, solid);
+        Assert.Equal("SHINE.DDS", glow.Base);
+    }
+
+    [Fact]
+    public void MaterialsWithDifferentTextureSetsGetDifferentBatches()
+    {
+        // The whole point of the rekeying: a material that adds an environment
+        // map is a different draw from the same base map on its own, so the env
+        // stage can no longer be silently dropped into the base batch.
+        var plain = MaterialKey.FromBase("METAL.DDS");
+        var reflective = new MaterialKey(
+            new MaterialTextures("METAL.DDS", "METAL_ENV.DDS", null, null),
+            MaterialBlend.Alpha, MaterialKey.White);
+
+        Assert.NotEqual(plain, reflective);
+        Assert.False(plain.IsMultiTexture);
+        Assert.True(reflective.IsMultiTexture);
+        Assert.Equal(2, reflective.Textures.Count);
+
+        // Value equality, so two identical materials do share one batch.
+        Assert.Equal(reflective, new MaterialKey(
+            new MaterialTextures("METAL.DDS", "METAL_ENV.DDS", null, null),
+            MaterialBlend.Alpha, MaterialKey.White));
     }
 }

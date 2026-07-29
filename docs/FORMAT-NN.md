@@ -699,10 +699,56 @@ model is exactly the one that defeated the earlier subobject-texture-list
 approach, because its 3 materials against 2 textures showed the selector had to
 live in the material. It does, at `+0x18` -> `+0x04`.
 
+### The stage array - a material binds up to three textures, by role
+
+The block at `+0x18` is not a single record but an **array**, with its length at
+`+0x14` and 32-byte records. Two rules govern it, both measured across all 9,767
+materials and 14,357 records in the build.
+
+**1. Live records sit at even positions, and only even positions.** Counted
+corpus-wide: **0 live stages at an odd index, 0 padding at an even one**. The
+array interleaves a live record with an inert `0x000N000N` one, so a material's
+live stages are at 0, 2 and 4 - never 1, 3 or 5. Whether the true record is
+therefore 64 bytes with a 32-byte tail, rather than a 32-byte record alternating
+with padding, is **OPEN**; both readings produce identical stage lists, so nothing
+downstream depends on the answer.
+
+That also revises the raw counts. 6,967 materials declare one record, 987 two, 617
+three, 735 four and 125 five - but by *live* stages it is **7,954 with one, 1,352
+with two, 125 with three**, and 336 with none. **Three is the real maximum.**
+
+**2. The role is in the flag word, not the array position.** This is the
+correction that matters, because the obvious reading - position 0 is the base map
+- is wrong and fails silently. The low 16 bits of the flag name the role, and the
+model's own texture names confirm it from a completely separate part of the file:
+
+| Bits | Role | Stages | Name evidence |
+|------|------|-------:|---------------|
+| `0x0002` | Base / diffuse | 9,403 | 2,988 named `_dif`; the rest unsuffixed |
+| `0x0004` | Environment | 1,322 | 1,211 named `_env` |
+| `0x0001` | Normal | 230 | 212 named `_nml` or `_nrm` |
+| `0x0008` | Specular | 65 | 65 named `_spe` - a clean 100% |
+
+Rarer bits (`0x0010` x8, `0x0020` x2, `0x0400` x2, `0x0800` x1) carry no suffix
+convention and stay unnamed rather than guessed at.
+
+`POD.ZNO` is the model that settles it: its live stages run `pod_nml`,
+`pod_dif`, `pod_1_env` - **a normal map at position 0**. 230 materials are shaped
+that way, and reading record 0 as the base map hands every one of them a normal
+map to draw as its diffuse. The decoder now selects the base stage by role.
+
+The high nibble separates live from padding (`0x6…` or `0x2…` set); the padding
+family mirrors its low half into its high half and leaves the nibble clear.
+
+**Where the environment maps are:** Zone 4 (528) and Zone F (424) hold most of
+them, then Zone 2 (129) and Zone 3 (68). **Zone 1 has 6**, all on enemies - so an
+environment-map change is invisible in Sylvania Castle and has to be checked in
+the metal zones.
+
 ### The full chain
 
 ```
-mesh set --i_material--> material --+0x18--> texture map --index--> NZTL --> .DDS
+mesh set --i_material--> material --+0x18--> stage array --role--> index --> NZTL --> .DDS
 ```
 
 Every link is now verified. `tools/nn.py export` writes an `.mtl` beside the

@@ -470,15 +470,57 @@ public sealed record NnNode(
     };
 }
 
+/// <summary>The job a texture stage does, from the low half of its flag word.</summary>
+/// <remarks>
+/// <para>
+/// Recovered by crossing two independent sources over the whole build. The bit
+/// comes out of the material's stage record; the <c>_dif</c>/<c>_env</c>/
+/// <c>_nml</c>/<c>_spe</c> suffix comes out of the model's texture list. Neither
+/// was fitted to the other, so the agreement is real evidence:
+/// </para>
+/// <list type="table">
+/// <item><term>0x0002 Base</term><description>9,403 stages — 2,988 named <c>_dif</c>, the rest unsuffixed</description></item>
+/// <item><term>0x0004 Environment</term><description>1,322 stages — 1,211 named <c>_env</c></description></item>
+/// <item><term>0x0001 Normal</term><description>230 stages — 212 named <c>_nml</c> or <c>_nrm</c></description></item>
+/// <item><term>0x0008 Specular</term><description>65 stages — 65 named <c>_spe</c>, a clean 100%</description></item>
+/// </list>
+/// <para>
+/// The remaining bits (0x0010 x8, 0x0020 x2, 0x0400 x2, 0x0800 x1) are too rare
+/// to name from the data and carry no suffix convention. They stay
+/// <see cref="Unknown"/> rather than being guessed at.
+/// </para>
+/// </remarks>
+public enum TextureRole
+{
+    Unknown = 0,
+    Base = 0x0002,
+    Environment = 0x0004,
+    Normal = 0x0001,
+    Specular = 0x0008,
+}
+
 /// <summary>One texture stage of a material.</summary>
 /// <remarks>
+/// <para>
 /// A 32-byte record: <c>u32 flags</c>, <c>u32 index</c> into the model's texture
-/// list, then floats. The flags separate into families by observation across the
-/// build's 14,357 stages — <c>0x60000002</c> is the diffuse base and is stage 0
-/// on 8,808 materials, <c>0x60000004</c> an environment map usually in stage 2,
-/// and the <c>0x000N000N</c> family (both halves equal, high nibble clear) sits
-/// in odd slots repeating index 0 and appears to be inert padding rather than a
-/// live stage. Roles beyond base and environment are <b>not yet confirmed</b>.
+/// list, then floats.
+/// </para>
+/// <para>
+/// <b>Live stages occupy even array positions and only even ones.</b> Measured
+/// across all 9,767 materials and 14,357 records in the build: <b>0 live stages
+/// at an odd position, 0 padding at an even one</b>. So the array interleaves a
+/// live record with an inert <c>0x000N000N</c> one, and a material's live stages
+/// are at positions 0, 2, 4. Whether that means the true record is 64 bytes with
+/// a 32-byte tail, rather than a 32-byte record alternating with padding, is
+/// <b>OPEN</b> — both readings produce identical stage lists, so nothing here
+/// depends on the answer.
+/// </para>
+/// <para>
+/// <b>The role is in the flag word, not the array position.</b> That correction
+/// matters: <c>POD.ZNO</c> holds <c>pod_nml</c> at position 0, <c>pod_dif</c> at
+/// 2 and <c>pod_1_env</c> at 4, so reading position 0 as "the base map" hands the
+/// renderer a normal map. 230 materials are shaped that way.
+/// </para>
 /// </remarks>
 /// <param name="Flags">The stage's raw flag word.</param>
 /// <param name="Index">Index into the model's texture list.</param>
@@ -497,11 +539,22 @@ public readonly record struct NnTextureStage(uint Flags, int Index)
     /// </remarks>
     public bool IsLive => (Flags & 0xF0000000u) != 0;
 
+    /// <summary>What this stage is for, or <see cref="TextureRole.Unknown"/>.</summary>
+    public TextureRole Role => IsLive && Enum.IsDefined(typeof(TextureRole), (int)(Flags & 0xFFFFu))
+        ? (TextureRole)(Flags & 0xFFFFu)
+        : TextureRole.Unknown;
+
     /// <summary>The diffuse base map — the stage the renderer draws today.</summary>
-    public bool IsBase => IsLive && (Flags & 0xFFFFu) == 2;
+    public bool IsBase => Role == TextureRole.Base;
 
     /// <summary>An environment (reflection) map.</summary>
-    public bool IsEnvironment => IsLive && (Flags & 0xFFFFu) == 4;
+    public bool IsEnvironment => Role == TextureRole.Environment;
+
+    /// <summary>A normal map.</summary>
+    public bool IsNormal => Role == TextureRole.Normal;
+
+    /// <summary>A specular map.</summary>
+    public bool IsSpecular => Role == TextureRole.Specular;
 }
 
 /// <summary>A material, and the texture it selects.</summary>
@@ -540,8 +593,34 @@ public sealed class NnMaterial
     /// shader has nine sampler slots — base, three decals, modulate, add,
     /// opacity, normal and two user samplers (<c>docs/ORACLES.md</c>).
     /// </para>
+    /// <para>
+    /// This list includes the padding records. Use <see cref="LiveStages"/> to
+    /// walk what the material actually binds: 7,954 materials carry one live
+    /// stage, 1,352 carry two and 125 carry three, so <b>three is the real
+    /// maximum</b>, not the five the raw record count suggests.
+    /// </para>
     /// </remarks>
     public IReadOnlyList<NnTextureStage> Stages { get; init; } = [];
+
+    /// <summary>The stages this material actually binds, in array order.</summary>
+    public IEnumerable<NnTextureStage> LiveStages
+    {
+        get
+        {
+            foreach (var stage in Stages)
+                if (stage.IsLive) yield return stage;
+        }
+    }
+
+    /// <summary>
+    /// The texture-list index this material binds for a role, or null.
+    /// </summary>
+    public int? IndexFor(TextureRole role)
+    {
+        foreach (var stage in Stages)
+            if (stage.Role == role) return stage.Index;
+        return null;
+    }
 
     /// <summary>How this material blends over what is already drawn.</summary>
     public MaterialBlend Blend { get; init; }
@@ -611,7 +690,16 @@ public sealed class NnMaterial
                         BinaryPrimitives.ReadInt32LittleEndian(data[(r + 4)..]));
                 }
             }
-            if (block != 0 && start + 8 <= data.Length)
+            // The base map is the stage whose ROLE says base, not record 0.
+            // POD.ZNO orders its stages normal, diffuse, environment; 230
+            // materials in the build lead with a normal map, and reading record 0
+            // hands every one of them a normal map to draw as its diffuse.
+            foreach (var stage in stages)
+                if (stage.IsBase) { texture = stage.Index; break; }
+            if (texture is null)
+                foreach (var stage in stages)
+                    if (stage.IsLive) { texture = stage.Index; break; }
+            if (texture is null && block != 0 && start + 8 <= data.Length)
                 texture = BinaryPrimitives.ReadInt32LittleEndian(data[(start + 4)..]);
         }
 
