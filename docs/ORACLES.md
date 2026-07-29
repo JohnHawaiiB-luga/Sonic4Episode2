@@ -291,6 +291,25 @@ shader source is SEGA's; nothing is copied. Our implementation is written agains
 these recovered facts, exactly as the rest of the project is written against
 recovered symbol names and struct offsets.
 
+
+### Capture plus CTAB — how the light parameters get recovered
+
+The gameplay capture (beat 67) shows the vertex constant space is **small: 16
+registers**, and that `c13` sits invariant at `(0, 1, 0, 0)` across all 1,035
+draws in the slice. That is *consistent with* a fixed light direction and is
+**not claimed as one** — a clean axis vector is equally an up-vector or a matrix
+row, and values alone cannot tell them apart.
+
+The PC shaders settle it. Their `CTAB` constant tables carry **names**:
+`ambient`, `diffuse`, `specular`, `emission`, `shininess`, and the fog pair
+`density` / `start`. So each shader states which register holds which term, in
+its own metadata. Crossing that against the captured register values names every
+constant the engine feeds — no inference from shape.
+
+That is the route to retiring the light direction invented in beat 64, and it is
+better than reading the iOS GLSL for the purpose, because the iOS source's role
+options are all compile-time `(-1)` defaults while `CTAB` is concrete per shader.
+
 ## Working with it
 
 `rizin` is the tool on this machine (no IDA or Ghidra):
