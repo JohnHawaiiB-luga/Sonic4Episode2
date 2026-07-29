@@ -71,8 +71,20 @@ public sealed class StageViewerGame : Game
     private VertexBuffer? _vertexBuffer;
     private IndexBuffer? _indexBuffer;
 
-    /// <summary>Where each material's triangles sit inside <see cref="_indexBuffer"/>.</summary>
-    private readonly Dictionary<MaterialKey, (int Start, int Count)> _batchRanges = [];
+    /// <summary>
+    /// Where each material's triangles sit inside <see cref="_indexBuffer"/>,
+    /// broken into columns and <b>sorted by column</b>.
+    /// </summary>
+    /// <remarks>
+    /// Sorting is what makes culling free at draw time: because a material's
+    /// columns are laid out in ascending order inside the shared buffer, the
+    /// whole visible column range is one contiguous span, so a culled draw is
+    /// still a single <c>DrawIndexedPrimitives</c> — just a shorter one.
+    /// </remarks>
+    private readonly Dictionary<MaterialKey, ColumnSpan[]> _batchSpans = [];
+
+    /// <summary>One column's triangles within a material's region of the buffer.</summary>
+    private readonly record struct ColumnSpan(int Column, int Start, int Count);
     private readonly Dictionary<string, Texture2D> _textures = [];
     private StageBatch? _pending;
     private Texture2D _white = null!;
@@ -88,6 +100,28 @@ public sealed class StageViewerGame : Game
     private VertexPositionNormalTexture[] _ringVertices = [];
     private readonly Dictionary<MaterialKey, int[]> _ringBatches = [];
     private int _ringsBuiltFor = -1;
+    private bool _reportedCulling;
+
+    /// <summary>
+    /// Per-frame draw times, for measuring the renderer honestly.
+    /// </summary>
+    /// <remarks>
+    /// Wall-clocking the whole process conflates load time with draw time and is
+    /// hostage to whatever else the machine is doing — two identical runs came
+    /// out 33% apart while another job was building. Timing <see cref="Draw"/>
+    /// itself and reporting the <b>minimum</b> gives a figure that contention can
+    /// only spoil upward, so the best sample is the closest to the truth.
+    /// <para>
+    /// Caveat worth keeping in mind: this measures CPU time in the method, not
+    /// GPU completion, since draw calls are queued rather than finished when
+    /// <see cref="Draw"/> returns. It is the right instrument for the CPU-side
+    /// costs that dominate here and the wrong one for judging shader expense.
+    /// </para>
+    /// </remarks>
+    private readonly List<double> _frameTimes = [];
+
+    /// <summary>Per-frame update times, measured the same way.</summary>
+    private readonly List<double> _updateTimes = [];
     private GameEngine _engine = null!;
 
     private Vector2 _camera;
@@ -225,7 +259,7 @@ public sealed class StageViewerGame : Game
         Console.WriteLine($"stage: {_batches.Count} material batches, " +
                           $"{multi} multi-textured ({envTriangles:N0} reflective triangles)");
 
-        UploadStageGeometry();
+        UploadStageGeometry(batch);
     }
 
     /// <summary>
@@ -239,25 +273,64 @@ public sealed class StageViewerGame : Game
     /// 32-bit because an act runs to millions of vertices, far past what 16-bit
     /// can address.
     /// </remarks>
-    private void UploadStageGeometry()
+    private void UploadStageGeometry(StageBatch batch)
     {
         _vertexBuffer?.Dispose();
         _indexBuffer?.Dispose();
         _vertexBuffer = null;
         _indexBuffer = null;
-        _batchRanges.Clear();
+        _batchSpans.Clear();
         if (_vertices.Length == 0) return;
 
         int total = _batches.Values.Sum(v => v.Length);
         if (total == 0) return;
 
         var all = new int[total];
+        var spans = new List<ColumnSpan>();
         int at = 0;
         foreach (var pair in _batches)
         {
-            Array.Copy(pair.Value, 0, all, at, pair.Value.Length);
-            _batchRanges[pair.Key] = (at, pair.Value.Length);
-            at += pair.Value.Length;
+            var indices = pair.Value;
+            int triangles = indices.Length / 3;
+            var columns = batch.ColumnsByMaterial.TryGetValue(pair.Key, out var c) &&
+                          c.Count == triangles
+                ? c
+                : null;
+
+            // Order this material's triangles by column, so the visible range
+            // later resolves to one contiguous span. Without recorded columns
+            // the material keeps its original order as a single span, which
+            // simply means it is never culled.
+            var order = new int[triangles];
+            for (int i = 0; i < triangles; i++) order[i] = i;
+            if (columns is not null)
+            {
+                var keys = new int[triangles];
+                for (int i = 0; i < triangles; i++) keys[i] = columns[i];
+                Array.Sort(keys, order);
+            }
+
+            spans.Clear();
+            int spanStart = at;
+            int spanColumn = triangles > 0 && columns is not null ? columns[order[0]] : 0;
+            for (int i = 0; i < triangles; i++)
+            {
+                int t = order[i];
+                int column = columns is not null ? columns[t] : 0;
+                if (column != spanColumn)
+                {
+                    spans.Add(new ColumnSpan(spanColumn, spanStart, at - spanStart));
+                    spanStart = at;
+                    spanColumn = column;
+                }
+                all[at++] = indices[t * 3];
+                all[at++] = indices[t * 3 + 1];
+                all[at++] = indices[t * 3 + 2];
+            }
+            if (at > spanStart)
+                spans.Add(new ColumnSpan(spanColumn, spanStart, at - spanStart));
+
+            _batchSpans[pair.Key] = [.. spans];
         }
 
         try
@@ -283,7 +356,7 @@ public sealed class StageViewerGame : Game
             _indexBuffer?.Dispose();
             _vertexBuffer = null;
             _indexBuffer = null;
-            _batchRanges.Clear();
+            _batchSpans.Clear();
             Console.WriteLine($"stage geometry stays on the CPU: {ex.Message}");
         }
     }
@@ -735,16 +808,26 @@ public sealed class StageViewerGame : Game
                 }
         _itemBoxesRemaining = boxes?.Remaining ?? -1;
 
+        // Pose each distinct model once, not once per placement. The pose depends
+        // only on the model and the frame — never on where the instance stands —
+        // so Zone F was doing 200 skeleton evaluations and full CPU vertex
+        // transforms to produce 6 distinct results, every frame.
+        var posed = new Dictionary<LoadedObject, TileMesh>(ReferenceEqualityComparer.Instance);
+
         var batch = new StageBatch();
         foreach (var (obj, x, y) in _objectPlacements)
         {
             if (broken.Contains((x, y))) continue;
-            TileMesh mesh = obj.Rest!;
-            if (obj.Model is not null && obj.Channels.Count > 0)
+            if (!posed.TryGetValue(obj, out var mesh))
             {
-                float f = obj.Start + (frame % MathF.Max(obj.End - obj.Start, 1f));
-                var world = AnimatedPose.World(obj.Model.Nodes, obj.Channels, f);
-                mesh = TileMesh.Posed(obj.Model, world);
+                mesh = obj.Rest!;
+                if (obj.Model is not null && obj.Channels.Count > 0)
+                {
+                    float f = obj.Start + (frame % MathF.Max(obj.End - obj.Start, 1f));
+                    var world = AnimatedPose.World(obj.Model.Nodes, obj.Channels, f);
+                    mesh = TileMesh.Posed(obj.Model, world);
+                }
+                posed[obj] = mesh;
             }
             batch.Add(mesh, x, y, 385f);
         }
@@ -1006,6 +1089,30 @@ public sealed class StageViewerGame : Game
         name is not null && _textures.TryGetValue(name.ToUpperInvariant(), out var t)
             ? t : _white;
 
+    /// <summary>
+    /// The slice of a material's triangles lying in a column range, or null when
+    /// none of it does.
+    /// </summary>
+    /// <remarks>
+    /// One span rather than several because <see cref="_batchSpans"/> is sorted
+    /// by column, so everything between the first and last visible column is
+    /// already adjacent in the index buffer. Culling therefore costs a draw
+    /// nothing — it only shortens one.
+    /// </remarks>
+    private static (int Start, int Count)? VisibleSpan(
+        ColumnSpan[] spans, int minColumn, int maxColumn)
+    {
+        int start = -1, end = 0;
+        foreach (var span in spans)
+        {
+            if (span.Column < minColumn) continue;
+            if (span.Column > maxColumn) break;
+            if (start < 0) start = span.Start;
+            end = span.Start + span.Count;
+        }
+        return start < 0 ? null : (start, end - start);
+    }
+
     /// <summary>Draws the placed object models.</summary>
     private void DrawObjects()
     {
@@ -1152,6 +1259,7 @@ public sealed class StageViewerGame : Game
 
     protected override void Update(GameTime gameTime)
     {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         bool rolling = _engine.Player?.Rolling ?? false;
         if (_engine.RingCount != _shownRings || rolling != _shownRolling)
         {
@@ -1162,15 +1270,6 @@ public sealed class StageViewerGame : Game
                                ? "" : $" of {_engine.RingField.Count}") +
                            (rolling ? " - rolling" : "");
         }
-
-        // Play the object animations by rebuilding their posed geometry each
-        // frame. Only when something actually animates, so a static act pays
-        // nothing. A box breaking also forces one rebuild so it stops drawing,
-        // even on a stage where nothing else moves.
-        if (_objectsAnimate)
-            BuildObjectBuffers((float)gameTime.TotalGameTime.TotalSeconds * 30f);
-        else if (_engine.ItemBoxes is { } boxes && boxes.Remaining != _itemBoxesRemaining)
-            BuildObjectBuffers(0f);
 
         var keyboard = Keyboard.GetState();
         if (keyboard.IsKeyDown(Keys.Escape)) Exit();
@@ -1227,13 +1326,27 @@ public sealed class StageViewerGame : Game
         if (keyboard.IsKeyDown(Keys.PageUp)) _zoom *= 1f + delta;
         if (keyboard.IsKeyDown(Keys.PageDown)) _zoom /= 1f + delta;
 
+        clock.Stop();
+        _updateTimes.Add(clock.Elapsed.TotalMilliseconds);
         base.Update(gameTime);
     }
 
     protected override void Draw(GameTime gameTime)
     {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         GraphicsDevice.Clear(new Color(16, 18, 24));
         if (_vertices.Length == 0) return;
+
+        // Posed object geometry is presentation, not simulation, so it belongs
+        // here rather than in Update. That is not just tidiness: rebuilding it
+        // per simulation step drove Update past the fixed timestep's 16.7 ms
+        // budget, and MonoGame answers a slow Update by running more of them to
+        // catch up — 28 updates per drawn frame, each redoing work whose result
+        // is only ever seen once. Rebuilding per drawn frame breaks that spiral.
+        if (_objectsAnimate)
+            BuildObjectBuffers((float)gameTime.TotalGameTime.TotalSeconds * 30f);
+        else if (_engine.ItemBoxes is { } boxes && boxes.Remaining != _itemBoxesRemaining)
+            BuildObjectBuffers(0f);
 
         float halfWidth = GraphicsDevice.Viewport.Width / 2f / _zoom;
         float halfHeight = GraphicsDevice.Viewport.Height / 2f / _zoom;
@@ -1311,12 +1424,29 @@ public sealed class StageViewerGame : Game
         // Bind the resident geometry once for the whole stage; each material is
         // then a span of the shared index buffer.
         bool resident = _vertexBuffer is not null && _indexBuffer is not null &&
-                        _batchRanges.Count == _batches.Count;
+                        _batchSpans.Count == _batches.Count;
         if (resident)
         {
             GraphicsDevice.SetVertexBuffer(_vertexBuffer);
             GraphicsDevice.Indices = _indexBuffer;
         }
+
+        // Cull to the columns the camera can actually see. An act is a long
+        // strip — Zone F is some 13,000 world units wide — and the follow camera
+        // shows around 800 of them, so submitting the whole thing every frame
+        // was most of the remaining cost. Padded by one column because a tile is
+        // bucketed by its origin and can overhang into the next one.
+        // STAGE_CULL=off widens the range to everything, which is the honest way
+        // to measure what culling is worth: both configurations then run in the
+        // same session against the same contention.
+        bool cull = (Environment.GetEnvironmentVariable("STAGE_CULL") ?? "on") != "off";
+        int minColumn = cull
+            ? StageBatch.Column(_camera.X - halfWidth - StageBatch.ColumnWidth)
+            : int.MinValue;
+        int maxColumn = cull
+            ? StageBatch.Column(_camera.X + halfWidth + StageBatch.ColumnWidth)
+            : int.MaxValue;
+        int drawnTriangles = 0;
 
         foreach (var pair in _batches)
         {
@@ -1370,9 +1500,13 @@ public sealed class StageViewerGame : Game
                 }
                 if (resident)
                 {
-                    var range = _batchRanges[pair.Key];
-                    GraphicsDevice.DrawIndexedPrimitives(
-                        PrimitiveType.TriangleList, 0, range.Start, range.Count / 3);
+                    var visible = VisibleSpan(_batchSpans[pair.Key], minColumn, maxColumn);
+                    if (visible is { } span)
+                    {
+                        GraphicsDevice.DrawIndexedPrimitives(
+                            PrimitiveType.TriangleList, 0, span.Start, span.Count / 3);
+                        drawnTriangles += span.Count / 3;
+                    }
                 }
                 else
                 {
@@ -1388,6 +1522,16 @@ public sealed class StageViewerGame : Game
                 }
             }
         }
+        if (resident && !_reportedCulling)
+        {
+            _reportedCulling = true;
+            int all = _batchSpans.Values.Sum(s => s.Sum(x => x.Count / 3));
+            Console.WriteLine(
+                $"culling: {drawnTriangles:N0} of {all:N0} triangles drawn " +
+                $"({(all > 0 ? drawnTriangles * 100.0 / all : 0):F1}%), " +
+                $"columns {minColumn}..{maxColumn}");
+        }
+
         // Objects, rings and the player still stream their geometry — they are
         // small and rebuilt as they animate, so the upload is not the cost there.
         // Release the stage's buffers so those paths bind their own.
@@ -1402,10 +1546,39 @@ public sealed class StageViewerGame : Game
         DrawPlayer();
         base.Draw(gameTime);
 
+        clock.Stop();
+        _frameTimes.Add(clock.Elapsed.TotalMilliseconds);
+
         if (ScreenshotPath is not null && ++_frames >= ScreenshotFrame)
         {
+            ReportFrameTimes();
             SaveScreenshot(ScreenshotPath);
             Exit();
         }
+    }
+
+    /// <summary>
+    /// Reports the draw cost, leading with the fastest frame.
+    /// </summary>
+    /// <remarks>
+    /// The first few frames include shader compilation and driver warm-up, so
+    /// they are dropped. The minimum is the headline because contention can only
+    /// push a sample up.
+    /// </remarks>
+    private void ReportFrameTimes()
+    {
+        var samples = _frameTimes.Skip(Math.Min(3, _frameTimes.Count - 1))
+                                 .OrderBy(t => t).ToList();
+        if (samples.Count == 0) return;
+        Console.WriteLine(
+            $"draw:   min {samples[0]:F1} ms, median {samples[samples.Count / 2]:F1} ms, " +
+            $"max {samples[^1]:F1} ms over {samples.Count} frames");
+
+        var updates = _updateTimes.Skip(Math.Min(3, _updateTimes.Count - 1))
+                                  .OrderBy(t => t).ToList();
+        if (updates.Count > 0)
+            Console.WriteLine(
+                $"update: min {updates[0]:F1} ms, median {updates[updates.Count / 2]:F1} ms, " +
+                $"max {updates[^1]:F1} ms over {updates.Count} frames");
     }
 }
