@@ -91,8 +91,54 @@ public sealed class StageViewerGame : Game
     private Texture2D _marker = null!;
     private Texture2D _ring = null!;
     private TileMesh? _ringMesh;
-    private VertexPositionNormalTexture[] _objectVertices = [];
-    private readonly Dictionary<MaterialKey, int[]> _objectBatches = [];
+    /// <summary>
+    /// One distinct object model's geometry, resident on the GPU.
+    /// </summary>
+    /// <remarks>
+    /// Posing changes vertex positions but never counts, materials or triangle
+    /// order, so the buffers and the per-material ranges are allocated once and
+    /// only the vertex data is rewritten as the model animates.
+    /// </remarks>
+    private sealed class ObjectGeometry
+    {
+        public required DynamicVertexBuffer Vertices { get; init; }
+        public required IndexBuffer Indices { get; init; }
+        public required Dictionary<MaterialKey, (int Start, int Count)> Batches { get; init; }
+        public required VertexPositionNormalTexture[] Scratch { get; init; }
+
+        /// <summary>
+        /// The model's own X extent, measured from the geometry being uploaded.
+        /// </summary>
+        /// <remarks>
+        /// Culling an instance on its origin alone needs a margin, and any fixed
+        /// margin is a guess that is either wasteful or wrong. Measuring the real
+        /// extent as the vertices go up costs one pass over data already in hand
+        /// and makes the test exact: an instance is dropped only when its actual
+        /// geometry falls outside the view. Recomputed per frame for animated
+        /// models, since a pose can reach past the rest extent.
+        /// </remarks>
+        public float MinX { get; set; }
+        public float MaxX { get; set; }
+    }
+
+    /// <summary>
+    /// Each distinct object model's geometry, keyed by identity.
+    /// </summary>
+    /// <remarks>
+    /// The act used to merge every placement into one array and rebuild it each
+    /// frame — 153,726 vertices for Zone 1's 126 placements of 10 distinct models
+    /// — then hand that array to <c>DrawUserIndexedPrimitives</c> once per
+    /// material, which re-uploads it every call. Thirteen batches meant the same
+    /// 153,726 vertices crossed the bus thirteen times a frame. Keeping one copy
+    /// of each distinct model and drawing it per placement uploads about 12,000
+    /// vertices instead, and only when the model actually animates.
+    /// </remarks>
+    private readonly Dictionary<LoadedObject, ObjectGeometry> _objectGeometry =
+        new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>Where each distinct model stands, so instances draw in one group.</summary>
+    private readonly Dictionary<LoadedObject, List<(float X, float Y)>> _placementsByObject =
+        new(ReferenceEqualityComparer.Instance);
     private int _objectInstances;
     private VertexPositionNormalTexture[] _skyVertices = [];
     private readonly Dictionary<MaterialKey, int[]> _skyBatches = [];
@@ -744,6 +790,7 @@ public sealed class StageViewerGame : Game
 
         var loaded = new Dictionary<string, LoadedObject?>();
         _objectPlacements.Clear();
+        _placementsByObject.Clear();
         _objectInstances = 0;
         _objectsAnimate = false;
 
@@ -774,7 +821,11 @@ public sealed class StageViewerGame : Game
             if (obj?.Rest is null) continue;
 
             float scale = PlayerPhysics.WorldPerPixel;
-            _objectPlacements.Add((obj, placement.X * scale, -placement.Y * scale));
+            float px = placement.X * scale, py = -placement.Y * scale;
+            _objectPlacements.Add((obj, px, py));
+            if (!_placementsByObject.TryGetValue(obj, out var places))
+                _placementsByObject[obj] = places = [];
+            places.Add((px, py));
             _objectInstances++;
             if (obj.Channels.Count > 0) _objectsAnimate = true;
         }
@@ -795,56 +846,105 @@ public sealed class StageViewerGame : Game
 
     private void BuildObjectBuffers(float frame)
     {
-        // A broken item box stops being drawn. Positions match exactly: the
-        // viewer and ItemBoxes derive world coordinates the same way.
-        var broken = new HashSet<(float, float)>();
-        var boxes = _engine.ItemBoxes;
-        if (boxes is not null)
-            for (int i = 0; i < boxes.Count; i++)
-                if (boxes.IsBroken(i))
-                {
-                    var p = boxes.PositionOf(i);
-                    broken.Add((p.X, p.Y));
-                }
-        _itemBoxesRemaining = boxes?.Remaining ?? -1;
+        _itemBoxesRemaining = _engine.ItemBoxes?.Remaining ?? -1;
 
-        // Pose each distinct model once, not once per placement. The pose depends
-        // only on the model and the frame — never on where the instance stands —
-        // so Zone F was doing 200 skeleton evaluations and full CPU vertex
-        // transforms to produce 6 distinct results, every frame.
-        var posed = new Dictionary<LoadedObject, TileMesh>(ReferenceEqualityComparer.Instance);
-
-        var batch = new StageBatch();
-        foreach (var (obj, x, y) in _objectPlacements)
+        foreach (var (obj, places) in _placementsByObject)
         {
-            if (broken.Contains((x, y))) continue;
-            if (!posed.TryGetValue(obj, out var mesh))
+            if (places.Count == 0) continue;
+            bool animates = obj.Model is not null && obj.Channels.Count > 0;
+
+            // A static model's vertices never change, so it is uploaded once and
+            // then left alone.
+            if (_objectGeometry.TryGetValue(obj, out var geometry) && !animates) continue;
+
+            TileMesh mesh = obj.Rest!;
+            if (animates)
             {
-                mesh = obj.Rest!;
-                if (obj.Model is not null && obj.Channels.Count > 0)
-                {
-                    float f = obj.Start + (frame % MathF.Max(obj.End - obj.Start, 1f));
-                    var world = AnimatedPose.World(obj.Model.Nodes, obj.Channels, f);
-                    mesh = TileMesh.Posed(obj.Model, world);
-                }
-                posed[obj] = mesh;
+                float f = obj.Start + (frame % MathF.Max(obj.End - obj.Start, 1f));
+                var world = AnimatedPose.World(obj.Model!.Nodes, obj.Channels, f);
+                mesh = TileMesh.Posed(obj.Model, world);
             }
-            batch.Add(mesh, x, y, 385f);
+
+            geometry ??= CreateObjectGeometry(obj, mesh);
+            if (geometry is null) continue;
+
+            var scratch = geometry.Scratch;
+            int count = Math.Min(scratch.Length, mesh.Positions.Length / 3);
+            float minX = float.MaxValue, maxX = float.MinValue;
+            for (int i = 0; i < count; i++)
+            {
+                float x = mesh.Positions[i * 3];
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                scratch[i] = new VertexPositionNormalTexture(
+                    new Vector3(x, mesh.Positions[i * 3 + 1], mesh.Positions[i * 3 + 2]),
+                    Vector3.Backward,
+                    new Vector2(mesh.TexCoords[i * 2], 1f - mesh.TexCoords[i * 2 + 1]));
+            }
+            geometry.MinX = count > 0 ? minX : 0f;
+            geometry.MaxX = count > 0 ? maxX : 0f;
+            geometry.Vertices.SetData(scratch, 0, count, SetDataOptions.Discard);
+        }
+    }
+
+    /// <summary>
+    /// Allocates one model's device buffers and works out where each material's
+    /// triangles sit inside them.
+    /// </summary>
+    /// <remarks>
+    /// The index buffer is written once: posing moves vertices but never changes
+    /// the material a triangle belongs to or the order they come in, so the
+    /// ranges stay valid for every frame after.
+    /// </remarks>
+    private ObjectGeometry? CreateObjectGeometry(LoadedObject obj, TileMesh mesh)
+    {
+        int vertexCount = mesh.Positions.Length / 3;
+        if (vertexCount == 0 || mesh.Indices.Length == 0) return null;
+
+        var byMaterial = new Dictionary<MaterialKey, List<int>>();
+        for (int t = 0; t < mesh.TriangleMaterials.Length; t++)
+        {
+            var key = mesh.TriangleMaterials[t];
+            if (!byMaterial.TryGetValue(key, out var list)) byMaterial[key] = list = [];
+            list.Add(mesh.Indices[t * 3]);
+            list.Add(mesh.Indices[t * 3 + 1]);
+            list.Add(mesh.Indices[t * 3 + 2]);
         }
 
-        _objectVertices = new VertexPositionNormalTexture[batch.VertexCount];
-        for (int i = 0; i < _objectVertices.Length; i++)
+        var indices = new int[byMaterial.Values.Sum(v => v.Count)];
+        var ranges = new Dictionary<MaterialKey, (int Start, int Count)>();
+        int at = 0;
+        foreach (var (key, list) in byMaterial)
         {
-            _objectVertices[i] = new VertexPositionNormalTexture(
-                new Vector3(batch.Positions[i * 3],
-                            batch.Positions[i * 3 + 1],
-                            batch.Positions[i * 3 + 2]),
-                Vector3.Backward,
-                new Vector2(batch.TexCoords[i * 2], 1f - batch.TexCoords[i * 2 + 1]));
+            list.CopyTo(indices, at);
+            ranges[key] = (at, list.Count);
+            at += list.Count;
         }
-        _objectBatches.Clear();
-        foreach (var pair in batch.IndicesByMaterial)
-            _objectBatches[pair.Key] = [.. pair.Value];
+
+        try
+        {
+            var vertices = new DynamicVertexBuffer(GraphicsDevice,
+                VertexPositionNormalTexture.VertexDeclaration, vertexCount,
+                BufferUsage.WriteOnly);
+            var indexBuffer = new IndexBuffer(GraphicsDevice, IndexElementSize.ThirtyTwoBits,
+                                              indices.Length, BufferUsage.WriteOnly);
+            indexBuffer.SetData(indices);
+
+            var geometry = new ObjectGeometry
+            {
+                Vertices = vertices,
+                Indices = indexBuffer,
+                Batches = ranges,
+                Scratch = new VertexPositionNormalTexture[vertexCount],
+            };
+            _objectGeometry[obj] = geometry;
+            return geometry;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"object geometry not uploaded: {ex.Message}");
+            return null;
+        }
     }
 
     /// <summary>Loads a model and, if there is one beside it, its first motion.</summary>
@@ -1114,22 +1214,61 @@ public sealed class StageViewerGame : Game
     }
 
     /// <summary>Draws the placed object models.</summary>
-    private void DrawObjects()
+    private void DrawObjects(float minX, float maxX)
     {
-        if (_objectVertices.Length == 0) return;
-        foreach (var pair in _objectBatches)
+        if (_objectGeometry.Count == 0) return;
+
+        // A broken item box stops being drawn. Positions match exactly: the
+        // viewer and ItemBoxes derive world coordinates the same way.
+        HashSet<(float, float)>? broken = null;
+        if (_engine.ItemBoxes is { } boxes && boxes.Remaining != boxes.Count)
         {
-            SetBlend(pair.Key);
-            _effect.Texture = TextureNamed(pair.Key.Base);
-            foreach (var pass in _effect.CurrentTechnique.Passes)
+            broken = [];
+            for (int i = 0; i < boxes.Count; i++)
+                if (boxes.IsBroken(i))
+                {
+                    var p = boxes.PositionOf(i);
+                    broken.Add((p.X, p.Y));
+                }
+        }
+
+        foreach (var (obj, geometry) in _objectGeometry)
+        {
+            if (!_placementsByObject.TryGetValue(obj, out var places)) continue;
+
+            GraphicsDevice.SetVertexBuffer(geometry.Vertices);
+            GraphicsDevice.Indices = geometry.Indices;
+
+            foreach (var (key, range) in geometry.Batches)
             {
-                pass.Apply();
-                GraphicsDevice.DrawUserIndexedPrimitives(
-                    PrimitiveType.TriangleList,
-                    _objectVertices, 0, _objectVertices.Length,
-                    pair.Value, 0, pair.Value.Length / 3);
+                SetBlend(key);
+                _effect.Texture = TextureNamed(key.Base);
+
+                foreach (var (x, y) in places)
+                {
+                    // Off-screen instances are skipped outright. Unlike the stage,
+                    // where culling only shortens one draw, here it removes whole
+                    // draw calls — Zone F places 200 objects and the camera sees a
+                    // handful. The test uses the model's measured extent, so it
+                    // drops an instance only when its real geometry is outside the
+                    // view rather than when a padded origin guess says so.
+                    if (x + geometry.MaxX < minX || x + geometry.MinX > maxX) continue;
+                    if (broken is not null && broken.Contains((x, y))) continue;
+
+                    _effect.World = Matrix.CreateTranslation(x, y, 385f);
+                    foreach (var pass in _effect.CurrentTechnique.Passes)
+                    {
+                        pass.Apply();
+                        GraphicsDevice.DrawIndexedPrimitives(
+                            PrimitiveType.TriangleList, 0, range.Start, range.Count / 3);
+                    }
+                }
             }
         }
+
+        _effect.World = Matrix.Identity;
+        GraphicsDevice.SetVertexBuffer(null);
+        GraphicsDevice.Indices = null;
     }
 
     /// <summary>
@@ -1343,8 +1482,17 @@ public sealed class StageViewerGame : Game
         // budget, and MonoGame answers a slow Update by running more of them to
         // catch up — 28 updates per drawn frame, each redoing work whose result
         // is only ever seen once. Rebuilding per drawn frame breaks that spiral.
+        // Screenshot runs drive the animation from the frame counter rather than
+        // the clock, so a capture is reproducible. Wall time makes two runs of
+        // the same command sample different animation phases, which silently
+        // spoils any pixel diff taken between them — that cost me one wrong
+        // conclusion about culling before I noticed.
+        float animationFrame = ScreenshotPath is not null
+            ? _frames * 0.5f
+            : (float)gameTime.TotalGameTime.TotalSeconds * 30f;
+
         if (_objectsAnimate)
-            BuildObjectBuffers((float)gameTime.TotalGameTime.TotalSeconds * 30f);
+            BuildObjectBuffers(animationFrame);
         else if (_engine.ItemBoxes is { } boxes && boxes.Remaining != _itemBoxesRemaining)
             BuildObjectBuffers(0f);
 
@@ -1541,7 +1689,8 @@ public sealed class StageViewerGame : Game
             GraphicsDevice.Indices = null;
         }
 
-        DrawObjects();
+        DrawObjects(cull ? _camera.X - halfWidth : float.NegativeInfinity,
+                    cull ? _camera.X + halfWidth : float.PositiveInfinity);
         DrawRings();
         DrawPlayer();
         base.Draw(gameTime);
