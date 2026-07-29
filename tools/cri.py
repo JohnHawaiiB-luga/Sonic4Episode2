@@ -6,7 +6,7 @@ primitive — the **@UTF table**, a big-endian typed table with a schema, a stri
 pool and optional per-row or shared-constant storage.
 
 Getting @UTF gives you both formats, because a CSB is a table whose cells hold
-further tables and a CPK is a table whose cells hold file data.
+further tables and a CPK uses tables for its header and file TOC.
 
 Layout, big-endian throughout, with every offset **relative to 0x08**:
 
@@ -32,6 +32,8 @@ import argparse
 import os
 import struct
 import sys
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 
 MAGIC = b"@UTF"
 
@@ -183,6 +185,16 @@ def parse(data: bytes) -> UtfTable:
 
 
 CPK_MAGIC = b"CPK "
+TOC_MAGIC = b"TOC "
+
+
+@dataclass(frozen=True)
+class CpkEntry:
+    path: str
+    offset: int
+    size: int
+    extracted_size: int
+    file_id: int
 
 
 def parse_container(data: bytes) -> UtfTable:
@@ -197,6 +209,98 @@ def parse_container(data: bytes) -> UtfTable:
             raise CriError("CPK header truncated")
         return parse(data[0x10:])
     return parse(data)
+
+
+def cpk_entries(data: bytes) -> list[CpkEntry]:
+    """Read the file records from a CPK's TOC."""
+    if data[:4] != CPK_MAGIC:
+        raise CriError(f"not a CPK archive (magic={data[:4]!r})")
+
+    header = parse_container(data)
+    if len(header.rows) != 1:
+        raise CriError(f"CPK header has {len(header.rows)} rows, expected 1")
+    values = header.rows[0]
+
+    toc_offset = values.get("TocOffset")
+    content_offset = values.get("ContentOffset")
+    declared_files = values.get("Files")
+    if not all(isinstance(value, int) for value in (
+            toc_offset, content_offset, declared_files)):
+        raise CriError("CPK header lacks numeric TocOffset, ContentOffset or Files")
+    if toc_offset < 0 or toc_offset + 16 > len(data):
+        raise CriError(f"CPK TOC offset {toc_offset} is outside the archive")
+    if data[toc_offset: toc_offset + 4] != TOC_MAGIC:
+        raise CriError(
+            f"CPK TOC has wrong magic {data[toc_offset: toc_offset + 4]!r}")
+
+    toc = parse(data[toc_offset + 16:])
+    if len(toc.rows) != declared_files:
+        raise CriError(
+            f"CPK declares {declared_files} files but TOC has "
+            f"{len(toc.rows)} rows")
+    # VERIFIED on Episode II's archive: this base plus the first FileOffset is
+    # ContentOffset, and the final file ends exactly at EtocOffset.
+    archive_base = min(toc_offset, content_offset)
+    entries: list[CpkEntry] = []
+    paths: set[str] = set()
+    for index, row in enumerate(toc.rows):
+        directory = row.get("DirName")
+        file_name = row.get("FileName")
+        size = row.get("FileSize")
+        extracted_size = row.get("ExtractSize")
+        file_offset = row.get("FileOffset")
+        file_id = row.get("ID")
+        if not isinstance(directory, str) or not isinstance(file_name, str):
+            raise CriError(f"CPK TOC row {index} lacks a file path")
+        if not all(isinstance(value, int) for value in (
+                size, extracted_size, file_offset, file_id)):
+            raise CriError(f"CPK TOC row {index} lacks numeric file fields")
+        if min(size, extracted_size, file_offset) < 0:
+            raise CriError(f"CPK TOC row {index} has a negative file field")
+        if size != extracted_size:
+            raise CriError(
+                f"CPK entry {file_name!r} is compressed "
+                f"({size} stored, {extracted_size} extracted)")
+        relative = _cpk_path(directory, file_name)
+        if relative in paths:
+            raise CriError(f"duplicate CPK output path {relative!r}")
+        paths.add(relative)
+
+        start = archive_base + file_offset
+        end = start + size
+        if start < 0 or end > len(data):
+            raise CriError(
+                f"CPK entry {relative!r} spans {start}:{end}, "
+                f"outside {len(data)} bytes")
+        entries.append(CpkEntry(
+            relative,
+            start,
+            size,
+            extracted_size,
+            file_id,
+        ))
+    return entries
+
+
+def extract_cpk(data: bytes, output: str | os.PathLike) -> list[CpkEntry]:
+    """Extract every stored file from a CPK into an output directory."""
+    entries = cpk_entries(data)
+    root = Path(output)
+    root.mkdir(parents=True, exist_ok=True)
+    for entry in entries:
+        target = root.joinpath(*PurePosixPath(entry.path).parts)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data[entry.offset: entry.offset + entry.size])
+    return entries
+
+
+def _cpk_path(directory: str, file_name: str) -> str:
+    raw = "/".join(part for part in (directory, file_name) if part)
+    path = PurePosixPath(raw.replace("\\", "/"))
+    if (not file_name or path.is_absolute() or
+            any(part in ("", ".", "..") or ":" in part for part in path.parts)):
+        raise CriError(f"unsafe CPK output path {raw!r}")
+    return path.as_posix()
 
 
 def nested_tables(table: UtfTable) -> dict[str, UtfTable]:
@@ -284,6 +388,15 @@ def cmd_verify(args) -> int:
     return 1 if bad else 0
 
 
+def cmd_extract(args) -> int:
+    data = Path(args.file).read_bytes()
+    entries = extract_cpk(data, args.output)
+    print(
+        f"{len(entries)} files extracted from "
+        f"{os.path.basename(args.file)} to {args.output}")
+    return 0
+
+
 def _iter_files(root: str, *extensions: str):
     if os.path.isfile(root):
         yield root
@@ -311,6 +424,11 @@ def main(argv=None) -> int:
     p = sub.add_parser("verify", help="parse every CRI container under a tree")
     p.add_argument("root")
     p.set_defaults(func=cmd_verify)
+
+    p = sub.add_parser("extract", help="extract every stored file from a CPK")
+    p.add_argument("file")
+    p.add_argument("output")
+    p.set_defaults(func=cmd_extract)
 
     args = parser.parse_args(argv)
     return args.func(args)
