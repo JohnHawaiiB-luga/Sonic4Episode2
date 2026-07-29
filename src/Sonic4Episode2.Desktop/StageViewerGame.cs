@@ -1185,7 +1185,17 @@ public sealed class StageViewerGame : Game
         // convention MonoGame applies on SetValue, and whether the sampler is
         // actually bound through sampler_state under MojoShader. Set to true to
         // resume debugging.
-        const bool useStageEffect = false;
+        // STAGE_FX=on uses the real technique, STAGE_FX=flat the diagnostic that
+        // ignores shading entirely. Unset means BasicEffect, which is the known
+        // working path while the effect is still wrong.
+        string fxMode = Environment.GetEnvironmentVariable("STAGE_FX") ?? "off";
+        bool useStageEffect = fxMode is "on" or "flat";
+        if (useStageEffect && _stageEffect is not null)
+        {
+            var wanted = fxMode == "flat" ? "DiagnosticFlat" : "StageTechnique";
+            foreach (var t in _stageEffect.Techniques)
+                if (t.Name == wanted) { _stageEffect.CurrentTechnique = t; break; }
+        }
         if (useStageEffect && _stageEffect is not null)
         {
             _stageEffect.Parameters["WorldViewProjection"]?
@@ -1208,7 +1218,9 @@ public sealed class StageViewerGame : Game
                 : _white;
             if (useStageEffect && _stageEffect is not null)
             {
-                _stageEffect.Parameters["BaseTexture"]?.SetValue(texture);
+                // Straight onto the device sampler slot; the effect declares
+                // its sampler at register s0 rather than via sampler_state.
+                GraphicsDevice.Textures[0] = texture;
                 // Diffuse is white until the batch key carries the material; the
                 // per-material colour lands with the multi-texture work.
                 _stageEffect.Parameters["MaterialDiffuse"]?.SetValue(Vector4.One);

@@ -34,16 +34,11 @@ float3 MaterialAmbient = float3(0.3, 0.3, 0.3);
 float3 LightDirection = float3(0.3, 0.6, 0.75);
 float3 LightDiffuse   = float3(0.85, 0.85, 0.85);
 
-texture BaseTexture;
-sampler2D BaseSampler = sampler_state
-{
-    Texture   = <BaseTexture>;
-    MinFilter = Linear;
-    MagFilter = Linear;
-    MipFilter = Linear;
-    AddressU  = Wrap;
-    AddressV  = Wrap;
-};
+// Bound to sampler slot 0 on the device, not through sampler_state. Under
+// MojoShader the sampler_state form did not pick the texture up, which made every
+// texel read black and took the whole shader down with it — the flat-colour
+// diagnostic proved the geometry and transform were fine while this was the fault.
+sampler2D BaseSampler : register(s0);
 
 struct VSInput
 {
@@ -89,5 +84,23 @@ technique StageTechnique
     {
         VertexShader = compile VS_SHADERMODEL MainVS();
         PixelShader  = compile PS_SHADERMODEL MainPS();
+    }
+}
+
+// Diagnostic: ignores all shading and returns a fixed colour. If the stage draws
+// magenta with this, the transform and rasterisation are fine and the fault is in
+// shading or sampling. If it stays black, geometry is not reaching the raster at
+// all, which points at the matrix.
+float4 FlatPS(VSOutput input) : COLOR0
+{
+    return float4(1, 0, 1, 1);
+}
+
+technique DiagnosticFlat
+{
+    pass P0
+    {
+        VertexShader = compile VS_SHADERMODEL MainVS();
+        PixelShader  = compile PS_SHADERMODEL FlatPS();
     }
 }
