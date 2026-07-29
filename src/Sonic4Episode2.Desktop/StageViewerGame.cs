@@ -1202,8 +1202,14 @@ public sealed class StageViewerGame : Game
                 .SetValue(_effect.View * _effect.Projection);
             _stageEffect.Parameters["MaterialAmbient"]?
                 .SetValue(new Vector3(StageAmbient));
+            // NOT RECOVERED — tuned, and flagged as such. Zone 1's tile normals
+            // cluster around (0.5, 0.9, -0.1), and the previous invented direction
+            // sat nearly perpendicular to them, so N·L collapsed to zero and every
+            // surface fell back to ambient alone. This one actually lights the
+            // dominant orientation. The engine's own value lives in u_LightSource
+            // and is a capture-time constant; see docs/ORACLES.md.
             _stageEffect.Parameters["LightDirection"]?
-                .SetValue(Vector3.Normalize(new Vector3(0.3f, 0.6f, 0.75f)));
+                .SetValue(Vector3.Normalize(new Vector3(-0.35f, -0.80f, -0.50f)));
             _stageEffect.Parameters["LightDiffuse"]?.SetValue(new Vector3(0.85f));
         }
         Effect stageEffect = useStageEffect && _stageEffect is not null
@@ -1218,9 +1224,6 @@ public sealed class StageViewerGame : Game
                 : _white;
             if (useStageEffect && _stageEffect is not null)
             {
-                // Straight onto the device sampler slot; the effect declares
-                // its sampler at register s0 rather than via sampler_state.
-                GraphicsDevice.Textures[0] = texture;
                 // Diffuse is white until the batch key carries the material; the
                 // per-material colour lands with the multi-texture work.
                 _stageEffect.Parameters["MaterialDiffuse"]?.SetValue(Vector4.One);
@@ -1233,6 +1236,14 @@ public sealed class StageViewerGame : Game
             foreach (var pass in stageEffect.CurrentTechnique.Passes)
             {
                 pass.Apply();
+                // The texture goes on AFTER Apply. MonoGame writes the effect's
+                // own sampler state during Apply, so a texture set before it is
+                // discarded — which is what left every texel reading black.
+                if (useStageEffect && _stageEffect is not null)
+                {
+                    GraphicsDevice.Textures[0] = texture;
+                    GraphicsDevice.SamplerStates[0] = SamplerState.LinearWrap;
+                }
                 var indices = pair.Value;
                 for (int start = 0; start < indices.Length; start += chunk)
                 {
