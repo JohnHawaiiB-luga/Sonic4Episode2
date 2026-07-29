@@ -246,7 +246,10 @@ public sealed class StageViewerGame : Game
             VertexColorEnabled = false,
             TextureEnabled = true,
             LightingEnabled = true,
-            PreferPerPixelLighting = false,
+            // The game lights per pixel, not per vertex. Its own shaders say so:
+            // u_LightSource appears in 676 pixel shaders against 19 vertex ones
+            // (docs/ORACLES.md, CTAB census). Beat 64 guessed per-vertex.
+            PreferPerPixelLighting = true,
             SpecularColor = Vector3.Zero,
         };
         _effect.DirectionalLight0.Enabled = true;

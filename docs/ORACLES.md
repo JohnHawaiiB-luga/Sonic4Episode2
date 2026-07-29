@@ -310,6 +310,59 @@ That is the route to retiring the light direction invented in beat 64, and it is
 better than reading the iOS GLSL for the purpose, because the iOS source's role
 options are all compile-time `(-1)` defaults while `CTAB` is concrete per shader.
 
+
+### The PC shader constant vocabulary — recovered from CTAB
+
+Every PC shader carries a `CTAB` constant table naming its uniforms and the
+registers they occupy. Parsing all **1,843** gives the engine's full constant
+vocabulary. Offsets inside the table are relative to the structure start, i.e.
+just past the `CTAB` fourcc — getting that wrong yields names that all read
+`CTAB`, which is the tell.
+
+| Vertex-stage uniform | Shaders | Size |
+|---|---:|---|
+| `u_Fog` | 921 | float4 x5 |
+| `u_FrontMaterial` | 921 | **float4 x2** |
+| `u_TextureMatrix` | 830 | float4 |
+| `u_ModelViewProjectionMatrix` / `u_ModelViewMatrix` / `u_NormalMatrix` | 595 / 595 / 504 | float4 x4 / x3 / x3 |
+| `u_ModelViewBoneMatrix` | 326 | float4 x16 |
+| `u_ModelViewBoneNormalMatrix` | 262 | float4 x12 |
+| `u_LightSource` | 19 | float4 x16 |
+
+| Pixel-stage uniform / sampler | Shaders |
+|---|---:|
+| `s_texBase`, `u_TexBaseAlpha` | 789 / 788 |
+| `u_LightSource`, `u_FrontLightModelProduct` | **676** / 676 |
+| `u_FrontMaterial` | 443 |
+| `s_texSpecular` | 282 |
+| `s_texDecal`, `u_TexDecalAlpha` | 260 / 205 |
+| `s_texNormal` | 215 |
+| `u_TexShadowColor`, `s_texShadow` | 199 / 144 |
+| `s_texEnvMask` | 167 |
+| `s_texModulate` | 52 |
+| `s_texUserSampler2D1` / `2` | 37 / 36 |
+| `s_texDualParaboloid`, `u_DualParaboloidMatrix` | 31 / 31 |
+
+Three things this settles.
+
+**Lighting is per-pixel.** `u_LightSource` appears in **676 pixel shaders against
+19 vertex shaders**. Beat 64 set MonoGame's `PreferPerPixelLighting = false` on an
+assumption; that was wrong and is corrected.
+
+**`u_FrontMaterial` is two float4 registers** — independent confirmation of the
+material colour block decoded in beat 64, arrived at from shader metadata rather
+than from the model data.
+
+**The PC has shadows the mobile builds do not.** `s_texShadow` and
+`u_TexShadowColor` appear in 144 and 199 shaders, and nothing equivalent exists in
+the iOS interface. Worth remembering when using iOS as the shader reference: it is
+a *reduced* port, not the same feature set.
+
+**It also killed a candidate, correctly.** The gameplay capture showed `c13`
+invariant at `(0, 1, 0, 0)`, which looked like a fixed light direction. CTAB places
+`c13` inside `u_Fog` (c10..c14). Had that been claimed rather than flagged, a fog
+parameter would now be hard-coded as the engine's light direction.
+
 ## Working with it
 
 `rizin` is the tool on this machine (no IDA or Ghidra):
