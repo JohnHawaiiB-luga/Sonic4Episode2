@@ -12,6 +12,7 @@ _TYPE_FORMATS = {
     0x04: "I",
     0x06: "Q",
     0x0A: "I",
+    0x0B: "II",
 }
 
 
@@ -40,20 +41,29 @@ def _build_utf(name, columns, rows):
 
     row_width = sum(struct.calcsize(">" + _TYPE_FORMATS[t]) for _, t in columns)
     row_data = bytearray()
+    data_pool = bytearray()
     for row in rows:
         for column, type_code in columns:
             value = row[column]
             if type_code == 0x0A:
                 value = intern(value)
-            row_data.extend(struct.pack(">" + _TYPE_FORMATS[type_code], value))
+            elif type_code == 0x0B:
+                payload = value
+                value = (len(data_pool), len(payload))
+                data_pool.extend(payload)
+            values = value if isinstance(value, tuple) else (value,)
+            row_data.extend(
+                struct.pack(">" + _TYPE_FORMATS[type_code], *values)
+            )
 
     rows_offset = 0x18 + len(descriptors)
     string_offset = rows_offset + len(row_data)
     data_offset = string_offset + len(strings)
+    table_size = data_offset + len(data_pool)
     header = struct.pack(
         ">4s5IHHI",
         b"@UTF",
-        data_offset,
+        table_size,
         rows_offset,
         string_offset,
         data_offset,
@@ -62,7 +72,7 @@ def _build_utf(name, columns, rows):
         row_width,
         len(rows),
     )
-    return bytes(header + descriptors + row_data + strings)
+    return bytes(header + descriptors + row_data + strings + data_pool)
 
 
 def _chunk(magic, table):
@@ -130,6 +140,43 @@ def _cpk_fixture(files, declared_files=None, extracted_sizes=None):
         archive[at: at + len(payload)] = payload
         at += len(payload)
     return bytes(archive)
+
+
+def _adx_fixture(channels, sample_rate, sample_count):
+    header = bytearray(struct.pack(
+        ">HHBBBBIIHBB",
+        0x8000,
+        36,
+        3,
+        18,
+        4,
+        channels,
+        sample_rate,
+        sample_count,
+        500,
+        4,
+        0,
+    ))
+    header.extend(b"\0" * 14)
+    header.extend(b"(c)CRI")
+    return bytes(header)
+
+
+def _aax_fixture(streams):
+    return _build_utf(
+        "AAX",
+        [
+            ("data", 0x0B),
+            ("lpflg", 0x04),
+        ],
+        [
+            {
+                "data": payload,
+                "lpflg": loop_flag,
+            }
+            for payload, loop_flag in streams
+        ],
+    )
 
 
 class CriExtractionTests(unittest.TestCase):
@@ -221,6 +268,70 @@ class CriExtractionTests(unittest.TestCase):
         with self.assertRaisesRegex(
                 cri.CriError, "duplicate CPK output path 'Synth/same.aax'"):
             cri.cpk_entries(archive)
+
+
+class CriIdentificationTests(unittest.TestCase):
+    def test_identify_rejects_unknown_audio_magic(self):
+        payload = bytearray(_adx_fixture(2, 48000, 2000))
+        payload[:2] = b"\x48\x43"
+        aax = _aax_fixture([(bytes(payload), 0)])
+
+        with self.assertRaisesRegex(cri.CriError, "unsupported audio magic"):
+            cri.identify_aax(aax)
+
+    def test_identify_command_reports_adx_census(self):
+        archive = _cpk_fixture(
+            [
+                (
+                    "Synth",
+                    "mono.aax",
+                    _aax_fixture([
+                        (_adx_fixture(1, 44100, 1000), 0),
+                    ]),
+                ),
+                (
+                    "Synth",
+                    "stereo.aax",
+                    _aax_fixture([
+                        (_adx_fixture(2, 48000, 2000), 0),
+                        (_adx_fixture(2, 48000, 3000), 1),
+                    ]),
+                ),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "fixture.cpk"
+            source.write_bytes(archive)
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                try:
+                    result = cri.main(["identify", str(source)])
+                except SystemExit as exc:
+                    result = exc.code
+
+        self.assertEqual(0, result, stderr.getvalue())
+        lines = stdout.getvalue().splitlines()
+        self.assertIn(
+            "Synth/mono.aax: ADX, 44100 Hz, 1 channel, 1 stream",
+            lines,
+        )
+        self.assertIn(
+            "Synth/stereo.aax: ADX, 48000 Hz, 2 channels, 2 streams",
+            lines,
+        )
+        self.assertIn("2 files, 3 streams", lines)
+        self.assertIn("ADX: 2 files, 3 streams", lines)
+        self.assertIn(
+            "44100 Hz, 1 channel: 1 file, 1 stream",
+            lines,
+        )
+        self.assertIn(
+            "48000 Hz, 2 channels: 1 file, 2 streams",
+            lines,
+        )
 
 
 if __name__ == "__main__":

@@ -197,6 +197,21 @@ class CpkEntry:
     file_id: int
 
 
+@dataclass(frozen=True)
+class AudioStreamInfo:
+    codec: str
+    channels: int
+    sample_rate: int
+    sample_count: int
+    loop_flag: int
+
+
+@dataclass(frozen=True)
+class AudioFileInfo:
+    path: str
+    streams: tuple[AudioStreamInfo, ...]
+
+
 def parse_container(data: bytes) -> UtfTable:
     """Parse a `.CSB` or a `.CPK`.
 
@@ -292,6 +307,69 @@ def extract_cpk(data: bytes, output: str | os.PathLike) -> list[CpkEntry]:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data[entry.offset: entry.offset + entry.size])
     return entries
+
+
+def identify_aax(data: bytes) -> tuple[AudioStreamInfo, ...]:
+    """Identify every encoded stream held by an AAX table."""
+    table = parse(data)
+    if table.name != "AAX":
+        raise CriError(f"expected AAX table, found {table.name!r}")
+
+    streams: list[AudioStreamInfo] = []
+    for index, row in enumerate(table.rows):
+        payload = row.get("data")
+        loop_flag = row.get("lpflg")
+        if not isinstance(payload, bytes) or not isinstance(loop_flag, int):
+            raise CriError(f"AAX row {index} lacks data or lpflg")
+        streams.append(_identify_adx(payload, loop_flag, index))
+    if not streams:
+        raise CriError("AAX table has no streams")
+    return tuple(streams)
+
+
+def identify_cpk(data: bytes) -> list[AudioFileInfo]:
+    """Identify every AAX file stored in a CPK."""
+    files: list[AudioFileInfo] = []
+    for entry in cpk_entries(data):
+        payload = data[entry.offset: entry.offset + entry.size]
+        files.append(AudioFileInfo(entry.path, identify_aax(payload)))
+    return files
+
+
+# VERIFIED: all 94 Episode II streams use these ADX signature, parameter and
+# marker fields; channels and sample rate agree with the CSB metadata 94/94.
+def _identify_adx(
+        data: bytes, loop_flag: int, row_index: int) -> AudioStreamInfo:
+    if len(data) < 24:
+        raise CriError(f"AAX row {row_index} audio header is truncated")
+    if data[:2] != b"\x80\x00":
+        raise CriError(
+            f"AAX row {row_index} has unsupported audio magic {data[:4]!r}")
+
+    header_size = struct.unpack_from(">H", data, 2)[0] + 4
+    if header_size < 6 or header_size > len(data):
+        raise CriError(
+            f"AAX row {row_index} ADX header size {header_size} is invalid")
+    if data[header_size - 6: header_size] != b"(c)CRI":
+        raise CriError(f"AAX row {row_index} lacks the ADX copyright marker")
+    if data[4:7] != bytes((3, 18, 4)):
+        raise CriError(
+            f"AAX row {row_index} uses unsupported ADX parameters "
+            f"{tuple(data[4:7])}")
+
+    channels = data[7]
+    sample_rate = struct.unpack_from(">I", data, 8)[0]
+    sample_count = struct.unpack_from(">I", data, 12)[0]
+    if channels == 0 or sample_rate == 0:
+        raise CriError(
+            f"AAX row {row_index} has invalid ADX channels/sample rate")
+    return AudioStreamInfo(
+        "ADX",
+        channels,
+        sample_rate,
+        sample_count,
+        loop_flag,
+    )
 
 
 def _cpk_path(directory: str, file_name: str) -> str:
@@ -397,6 +475,59 @@ def cmd_extract(args) -> int:
     return 0
 
 
+def cmd_identify(args) -> int:
+    files = identify_cpk(Path(args.file).read_bytes())
+    for file in files:
+        combinations = {
+            (stream.codec, stream.sample_rate, stream.channels)
+            for stream in file.streams
+        }
+        if len(combinations) == 1:
+            codec, sample_rate, channels = combinations.pop()
+            description = (
+                f"{codec}, {sample_rate} Hz, {_count(channels, 'channel')}, "
+                f"{_count(len(file.streams), 'stream')}")
+        else:
+            description = ", ".join(
+                f"{stream.codec} {stream.sample_rate} Hz "
+                f"{_count(stream.channels, 'channel')}"
+                for stream in file.streams
+            )
+        print(f"{file.path}: {description}")
+
+    codec_files: dict[str, set[str]] = {}
+    codec_streams: dict[str, int] = {}
+    format_files: dict[tuple[int, int], set[str]] = {}
+    format_streams: dict[tuple[int, int], int] = {}
+    total_streams = 0
+    for file in files:
+        for stream in file.streams:
+            codec_files.setdefault(stream.codec, set()).add(file.path)
+            codec_streams[stream.codec] = codec_streams.get(stream.codec, 0) + 1
+            key = (stream.sample_rate, stream.channels)
+            format_files.setdefault(key, set()).add(file.path)
+            format_streams[key] = format_streams.get(key, 0) + 1
+            total_streams += 1
+
+    print()
+    print(f"{_count(len(files), 'file')}, {_count(total_streams, 'stream')}")
+    for codec in sorted(codec_streams):
+        print(
+            f"{codec}: {_count(len(codec_files[codec]), 'file')}, "
+            f"{_count(codec_streams[codec], 'stream')}")
+    for sample_rate, channels in sorted(format_streams):
+        key = (sample_rate, channels)
+        print(
+            f"{sample_rate} Hz, {_count(channels, 'channel')}: "
+            f"{_count(len(format_files[key]), 'file')}, "
+            f"{_count(format_streams[key], 'stream')}")
+    return 0
+
+
+def _count(value: int, noun: str) -> str:
+    return f"{value} {noun if value == 1 else noun + 's'}"
+
+
 def _iter_files(root: str, *extensions: str):
     if os.path.isfile(root):
         yield root
@@ -429,6 +560,10 @@ def main(argv=None) -> int:
     p.add_argument("file")
     p.add_argument("output")
     p.set_defaults(func=cmd_extract)
+
+    p = sub.add_parser("identify", help="report codecs and stream formats in a CPK")
+    p.add_argument("file")
+    p.set_defaults(func=cmd_identify)
 
     args = parser.parse_args(argv)
     return args.func(args)
