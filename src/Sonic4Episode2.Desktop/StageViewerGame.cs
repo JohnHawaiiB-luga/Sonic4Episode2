@@ -168,6 +168,25 @@ public sealed class StageViewerGame : Game
 
     /// <summary>Per-frame update times, measured the same way.</summary>
     private readonly List<double> _updateTimes = [];
+
+    /// <summary>
+    /// Draw time split by phase, so the frame budget is attributed rather than
+    /// assumed. Twice this session I moved cost from one place while believing it
+    /// lived in another; measuring per phase is what stops a third time.
+    /// </summary>
+    private readonly Dictionary<string, double> _phaseTimes = [];
+    private long _phaseMark;
+
+    private void Phase(string name)
+    {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (_phaseMark != 0)
+        {
+            double ms = (now - _phaseMark) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            _phaseTimes[name] = _phaseTimes.GetValueOrDefault(name) + ms;
+        }
+        _phaseMark = now;
+    }
     private GameEngine _engine = null!;
 
     private Vector2 _camera;
@@ -1516,7 +1535,9 @@ public sealed class StageViewerGame : Game
         GraphicsDevice.BlendState = BlendState.AlphaBlend;
 
         // The far background first, deep enough that everything draws over it.
+        _phaseMark = System.Diagnostics.Stopwatch.GetTimestamp();
         DrawBackground();
+        Phase("sky");
 
         // One draw per material. The chunking below only applies to the fallback
         // streaming path, which has a per-call primitive limit well below an
@@ -1689,11 +1710,16 @@ public sealed class StageViewerGame : Game
             GraphicsDevice.Indices = null;
         }
 
+        Phase("stage");
         DrawObjects(cull ? _camera.X - halfWidth : float.NegativeInfinity,
                     cull ? _camera.X + halfWidth : float.PositiveInfinity);
+        Phase("objects");
         DrawRings();
+        Phase("rings");
         DrawPlayer();
+        Phase("player");
         base.Draw(gameTime);
+        Phase("present");
 
         clock.Stop();
         _frameTimes.Add(clock.Elapsed.TotalMilliseconds);
@@ -1722,6 +1748,10 @@ public sealed class StageViewerGame : Game
         Console.WriteLine(
             $"draw:   min {samples[0]:F1} ms, median {samples[samples.Count / 2]:F1} ms, " +
             $"max {samples[^1]:F1} ms over {samples.Count} frames");
+
+        int drawn = Math.Max(1, _frames);
+        foreach (var (name, total) in _phaseTimes.OrderByDescending(kv => kv.Value))
+            Console.WriteLine($"  {name,-8} {total / drawn,6:F2} ms/frame");
 
         var updates = _updateTimes.Skip(Math.Min(3, _updateTimes.Count - 1))
                                   .OrderBy(t => t).ToList();

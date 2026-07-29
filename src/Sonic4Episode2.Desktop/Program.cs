@@ -1,9 +1,16 @@
+using System.Runtime.InteropServices;
 using Sonic4Episode2.Desktop;
 
 // Desktop head. Takes the game root and an act archive, opens a window and
 // draws that stage assembled from the original data.
 //
 // Requires your own copy of the game; nothing here ships assets.
+
+// Render at real pixels. Without this the window is DPI-virtualised on any
+// display not at 100% — a 1280x720 backbuffer stretched by the compositor to
+// 1600x900 on a 125% screen, which is both blurry and the reason a window
+// capture came out 1600x900 with the game letterboxed inside it.
+if (OperatingSystem.IsWindows()) Dpi.SetProcessDPIAware();
 
 // --screenshot <path> draws a few frames, writes a PNG and exits, which is how
 // the README's pictures of the running renderer are made.
@@ -42,3 +49,9 @@ using var game = new StageViewerGame(root, act)
 };
 game.Run();
 return 0;
+
+static class Dpi
+{
+    [DllImport("user32.dll")]
+    public static extern bool SetProcessDPIAware();
+}

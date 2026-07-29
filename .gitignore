@@ -27,6 +27,9 @@ libfox.so
 # data and stay tracked.
 /analysis/*.asm
 /analysis/*.png
+/analysis/*.mp4
+/analysis/*.gif
+/analysis/capture/
 /analysis/*.log
 /analysis/*.ps1
 /analysis/probe_*.py
