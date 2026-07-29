@@ -77,13 +77,48 @@ A 16-byte wrapper — magic, flags, table size — around an `@UTF` table named
 `CpkHeader`, 35 columns wide: `TocOffset`, `ItocOffset`, `EtocOffset`,
 `ContentOffset`, `TotalFiles`, `Align`, `Codec` and so on.
 
+## Where the audio actually lives — two populations, one codec
+
+Worth stating plainly because the CPK is the obvious half and the smaller one.
+
+**The CPK is the music.** 55 files carrying 94 streams, all ADX: 53 files (92
+streams) stereo 48 kHz, one mono and one stereo at 44.1 kHz. 94 streams across 55
+files means multi-stream containers, most likely intro-plus-loop pairs.
+
+**The CSB banks are the sound effects, embedded directly.** 711 ADX waveforms sit
+inside the `.CSB` files themselves rather than in any archive:
+
+| Bank | Embedded ADX |
+|------|-------------:|
+| `EP1_SND_FX.CSB` | 79 |
+| `EP2_SND_FX_Z1.CSB` | 135 |
+| `EP2_SND_FX_Z2.CSB` | 117 |
+| `EP2_SND_FX_Z3.CSB` | 127 |
+| `EP2_SND_FX_Z4.CSB` | 121 |
+| `EP2_SND_FX_ZF.CSB` | 132 |
+| **Total** | **711** |
+
+Status **VERIFIED, 711 of 711**. Each is located by the literal `(c)CRI` in the
+ADX header: the string sits at `copyright_offset - 2` from the file start, so a
+hit at absolute position `p` implies a header beginning at
+`p - (copyright_offset - 2)`, and every one of the 711 has the `0x8000` magic
+exactly there with a sane rate and channel count. 691 are mono and 20 stereo;
+rates are 11,025 (5), 16,000 (8), 22,050 (87), 32,000 (390), 44,100 (150) and
+48,000 (71). `SONICDL_SNG01.CSB` embeds none, which fits — its audio is the
+streamed CPK, so that file is metadata alone.
+
+**There is no HCA anywhere in the build.** Every waveform is ADX, so one decoder
+serves both populations and the harder proprietary codec never has to be touched.
+
 ## Still open
 
-- **Walking the CPK's TOC** to reach individual files. The header parses; the
-  table-of-contents tables it points at have not been followed yet.
-- **Decoding ADX/HCA audio.** The waveform codecs themselves are untouched. The
-  binary statically links CRI's decoders, and the plan is to replace them with an
+- **Decoding ADX to PCM.** The waveform codec itself is untouched. The binary
+  statically links CRI's decoders, and the plan is to replace them with an
   independent implementation rather than reverse the middleware.
+- **Extracting the 711 CSB-embedded effects.** Located and counted, not yet
+  written out.
+- **Loop points** for the streamed music. ADX carries loop metadata in its header;
+  where a track loops is data and should be read rather than invented.
 
 ## Usage
 
