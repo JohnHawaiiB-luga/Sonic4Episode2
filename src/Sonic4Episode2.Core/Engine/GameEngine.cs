@@ -19,7 +19,7 @@ namespace Sonic4Episode2.Core.Engine;
 /// normally and disappears at the start of the next one.
 /// </para>
 /// </remarks>
-public sealed class GameEngine
+public sealed partial class GameEngine
 {
     /// <summary>Task group owned by the running scene; freed on every transition.</summary>
     public const int SceneGroup = 1;

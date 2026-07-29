@@ -15,4 +15,9 @@
     <ProjectReference Include="..\Sonic4Episode2.Core\Sonic4Episode2.Core.csproj" />
   </ItemGroup>
 
+  <!-- Compiled with mgfxc; see Content/Stage.fx for how to rebuild it. -->
+  <ItemGroup>
+    <None Include="Content\Stage.mgfx" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

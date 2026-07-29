@@ -158,6 +158,12 @@ public sealed class Player : GameObject
     public bool OnGround { get; internal set; }
     public bool FacingLeft { get; private set; }
 
+    /// <summary>Whether the player is in the airborne hurt sequence.</summary>
+    public bool IsDamaged { get; private set; }
+
+    /// <summary>Whether the player is in the collisionless death sequence.</summary>
+    public bool IsDead { get; private set; }
+
     /// <summary>Input for the coming frame, set by the host before stepping.</summary>
     public float InputX { get; set; }
     public bool InputJump { get; set; }
@@ -172,6 +178,26 @@ public sealed class Player : GameObject
 
     private void Think()
     {
+        if (IsDead)
+        {
+            Velocity.Y -= Gravity;
+            if (Velocity.Y < -TerminalVelocity) Velocity.Y = -TerminalVelocity;
+            return;
+        }
+
+        if (IsDamaged)
+        {
+            if (OnGround)
+            {
+                IsDamaged = false;
+                _jumpHeld = InputJump;
+                return;
+            }
+            Velocity.Y -= Gravity;
+            if (Velocity.Y < -TerminalVelocity) Velocity.Y = -TerminalVelocity;
+            return;
+        }
+
         UpdateSpinDash();
         UpdateRollState();
 
@@ -393,6 +419,13 @@ public sealed class Player : GameObject
 
     private void Move()
     {
+        if (IsDead)
+        {
+            Position += new Vector3(Velocity, 0f);
+            OnGround = false;
+            return;
+        }
+
         var position = Position;
 
         // Horizontal first, resolved on its own. Doing both axes together is
@@ -465,6 +498,33 @@ public sealed class Player : GameObject
     }
 
     private int _noFrictionFrames;
+
+    internal void EnterDamage(float horizontalVelocity, float verticalVelocity,
+                              int invincibleFrames)
+    {
+        Velocity = new Vector2(horizontalVelocity, verticalVelocity);
+        OnGround = false;
+        InvincibleTimer = invincibleFrames;
+        IsDamaged = true;
+        ClearActiveMovementSequence();
+    }
+
+    internal void EnterDeath()
+    {
+        Velocity = new Vector2(0f, JumpVelocity);
+        OnGround = false;
+        InvincibleTimer = 0;
+        IsDamaged = false;
+        IsDead = true;
+        ClearActiveMovementSequence();
+    }
+
+    private void ClearActiveMovementSequence()
+    {
+        Rolling = false;
+        Charging = false;
+        DashPower = 0f;
+    }
 
     public void Bounce(float upwardVelocity)
     {

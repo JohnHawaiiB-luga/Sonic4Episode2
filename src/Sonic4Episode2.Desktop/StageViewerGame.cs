@@ -42,6 +42,18 @@ public sealed class StageViewerGame : Game
     private const float StageAmbient = 0.30f;
 
     private BasicEffect _effect = null!;
+
+    /// <summary>
+    /// Our own stage material effect, or null when it could not be loaded.
+    /// </summary>
+    /// <remarks>
+    /// Implements the material model recovered in <c>docs/ORACLES.md</c> —
+    /// texture modulated by the material diffuse, over a scene ambient, lit per
+    /// pixel by one parallel light. <see cref="_effect"/> stays for the sky,
+    /// objects, rings and markers until this covers them too, so a failure here
+    /// degrades to the previous renderer rather than to a black screen.
+    /// </remarks>
+    private Effect? _stageEffect;
     private VertexPositionNormalTexture[] _vertices = [];
     private readonly Dictionary<string, int[]> _batches = [];
     private readonly Dictionary<string, Texture2D> _textures = [];
@@ -265,6 +277,24 @@ public sealed class StageViewerGame : Game
         // carry - the commonest ambient by a wide margin.
         _effect.AmbientLightColor = new Vector3(StageAmbient);
         _effect.DiffuseColor = Vector3.One;
+        // Our own compiled effect, loaded beside the executable. Missing or
+        // broken, the stage falls back to BasicEffect rather than failing.
+        try
+        {
+            string fx = Path.Combine(AppContext.BaseDirectory, "Content", "Stage.mgfx");
+            if (File.Exists(fx))
+                _stageEffect = new Effect(GraphicsDevice, File.ReadAllBytes(fx));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"stage effect not loaded ({ex.GetType().Name}); " +
+                              "falling back to BasicEffect");
+            _stageEffect = null;
+        }
+        Console.WriteLine(_stageEffect is null
+            ? "stage effect: BasicEffect (fallback)"
+            : "stage effect: Stage.mgfx (recovered material model)");
+
         _white = new Texture2D(GraphicsDevice, 1, 1);
         _white.SetData(new[] { Color.Gray });
         _marker = new Texture2D(GraphicsDevice, 1, 1);
@@ -1143,15 +1173,52 @@ public sealed class StageViewerGame : Game
         // primitive limit well below an act's triangle count, so each batch is
         // chunked as well.
         const int chunk = 60000 * 3;
+
+        // Our own effect draws the stage when it loaded; everything else still
+        // goes through BasicEffect until it covers those paths too.
+        //
+        // OFF BY DEFAULT — it compiles, loads and binds without error but renders
+        // the stage black, so it is not yet correct and must not be the default.
+        // Two causes ruled out: the SV_POSITION semantic (wrong for vs_3_0, now
+        // POSITION0) and matrix packing (row_major is rejected by MGFX's
+        // parameter writer). Next suspects are the WorldViewProjection transpose
+        // convention MonoGame applies on SetValue, and whether the sampler is
+        // actually bound through sampler_state under MojoShader. Set to true to
+        // resume debugging.
+        const bool useStageEffect = false;
+        if (useStageEffect && _stageEffect is not null)
+        {
+            _stageEffect.Parameters["WorldViewProjection"]?
+                .SetValue(_effect.View * _effect.Projection);
+            _stageEffect.Parameters["MaterialAmbient"]?
+                .SetValue(new Vector3(StageAmbient));
+            _stageEffect.Parameters["LightDirection"]?
+                .SetValue(Vector3.Normalize(new Vector3(0.3f, 0.6f, 0.75f)));
+            _stageEffect.Parameters["LightDiffuse"]?.SetValue(new Vector3(0.85f));
+        }
+        Effect stageEffect = useStageEffect && _stageEffect is not null
+            ? _stageEffect : _effect;
+
         foreach (var pair in _batches)
         {
             SetBlend(pair.Key);
-            _effect.Texture = _textures.TryGetValue(
-                StageBatch.TextureOf(pair.Key).ToUpperInvariant(), out var texture)
-                ? texture
+            var texture = _textures.TryGetValue(
+                StageBatch.TextureOf(pair.Key).ToUpperInvariant(), out var t)
+                ? t
                 : _white;
+            if (useStageEffect && _stageEffect is not null)
+            {
+                _stageEffect.Parameters["BaseTexture"]?.SetValue(texture);
+                // Diffuse is white until the batch key carries the material; the
+                // per-material colour lands with the multi-texture work.
+                _stageEffect.Parameters["MaterialDiffuse"]?.SetValue(Vector4.One);
+            }
+            else
+            {
+                _effect.Texture = texture;
+            }
 
-            foreach (var pass in _effect.CurrentTechnique.Passes)
+            foreach (var pass in stageEffect.CurrentTechnique.Passes)
             {
                 pass.Apply();
                 var indices = pair.Value;
