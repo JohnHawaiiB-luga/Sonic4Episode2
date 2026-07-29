@@ -3,6 +3,7 @@ import io
 import struct
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 
 from tools import cri
@@ -160,6 +161,14 @@ def _adx_fixture(channels, sample_rate, sample_count):
     header.extend(b"\0" * 14)
     header.extend(b"(c)CRI")
     return bytes(header)
+
+
+def _adx_block(scale, nibbles):
+    values = [*nibbles, *([0] * (32 - len(nibbles)))]
+    block = bytearray(struct.pack(">H", scale))
+    for index in range(0, 32, 2):
+        block.append((values[index] & 0x0F) << 4 | (values[index + 1] & 0x0F))
+    return bytes(block)
 
 
 def _aax_fixture(streams):
@@ -332,6 +341,113 @@ class CriIdentificationTests(unittest.TestCase):
             "48000 Hz, 2 channels: 1 file, 2 streams",
             lines,
         )
+
+
+class CriDecodingTests(unittest.TestCase):
+    def test_decode_command_writes_declared_wave_frames(self):
+        source_data = (
+            _adx_fixture(1, 16000, 3)
+            + _adx_block(1000, [1, 0, -1])
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source.adx"
+            output = root / "decoded.wav"
+            source.write_bytes(source_data)
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                try:
+                    result = cri.main(["decode", str(source), str(output)])
+                except SystemExit as exc:
+                    result = exc.code
+
+            self.assertEqual(0, result, stderr.getvalue())
+            with wave.open(str(output), "rb") as decoded:
+                self.assertEqual(1, decoded.getnchannels())
+                self.assertEqual(2, decoded.getsampwidth())
+                self.assertEqual(16000, decoded.getframerate())
+                self.assertEqual(3, decoded.getnframes())
+                self.assertEqual(
+                    struct.pack("<3h", 1000, 1476, 634),
+                    decoded.readframes(3),
+                )
+            self.assertIn("3 samples decoded", stdout.getvalue())
+
+    def test_decode_adx_recovers_declared_mono_samples(self):
+        source = (
+            _adx_fixture(1, 44100, 10)
+            + _adx_block(1000, [1, -1, 2, -2, 3, -3, 4, -4, 7, -8])
+        )
+
+        decoded = cri.decode_adx(source)
+
+        self.assertEqual(1, decoded.channels)
+        self.assertEqual(44100, decoded.sample_rate)
+        self.assertEqual(10, decoded.sample_count)
+        self.assertEqual(
+            (1000, 790, 2613, 2045, 4567, 3538, 6674, 5114, 10807, 7251),
+            struct.unpack("<10h", decoded.pcm_s16le),
+        )
+
+    def test_decode_adx_interleaves_stereo_blocks(self):
+        source = (
+            _adx_fixture(2, 44100, 3)
+            + _adx_block(1000, [1, 2, 3])
+            + _adx_block(500, [-1, -2, -3])
+        )
+
+        decoded = cri.decode_adx(source)
+
+        self.assertEqual(2, decoded.channels)
+        self.assertEqual(3, decoded.sample_count)
+        self.assertEqual(
+            (1000, -500, 3790, -1896, 8984, -4495),
+            struct.unpack("<6h", decoded.pcm_s16le),
+        )
+
+    def test_decode_adx_clips_to_signed_16_bit(self):
+        source = (
+            _adx_fixture(1, 44100, 2)
+            + _adx_block(32767, [7, -8])
+        )
+
+        decoded = cri.decode_adx(source)
+
+        self.assertEqual(
+            (32767, -32768),
+            struct.unpack("<2h", decoded.pcm_s16le),
+        )
+
+    def test_decode_adx_rejects_truncated_sample_data(self):
+        source = (
+            _adx_fixture(1, 44100, 33)
+            + _adx_block(1000, [1])
+        )
+
+        with self.assertRaisesRegex(cri.CriError, "sample data is truncated"):
+            cri.decode_adx(source)
+
+    def test_decode_adx_rejects_early_end_marker(self):
+        source = (
+            _adx_fixture(1, 44100, 1)
+            + _adx_block(0x8001, [0])
+        )
+
+        with self.assertRaisesRegex(cri.CriError, "ends before declared sample"):
+            cri.decode_adx(source)
+
+    def test_decode_adx_preserves_silent_blocks(self):
+        source = (
+            _adx_fixture(1, 44100, 32)
+            + _adx_block(1000, [])
+        )
+
+        decoded = cri.decode_adx(source)
+
+        self.assertEqual(b"\0" * 64, decoded.pcm_s16le)
 
 
 if __name__ == "__main__":
