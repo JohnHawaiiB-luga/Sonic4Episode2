@@ -86,6 +86,22 @@ public sealed class Player : GameObject
     /// <summary>Normal ground tuning — mode 0 of the character's block.</summary>
     public const int NormalMode = 0;
 
+    /// <summary>Jump impulse multiplier while submerged.</summary>
+    /// <remarks>
+    /// <b>VERIFIED.</b> Episode II's arm64
+    /// <c>GmPlayerSpdParameterSetWater</c> at <c>0x005A5778</c> multiplies the
+    /// active jump parameter by 0.75.
+    /// </remarks>
+    public const float UnderwaterJumpMultiplier = 0.75f;
+
+    /// <summary>Gravity multiplier while submerged.</summary>
+    /// <remarks>
+    /// <b>VERIFIED.</b> Episode II's arm64
+    /// <c>GmPlayerSpdParameterSetWater</c> at <c>0x005A5778</c> multiplies the
+    /// active gravity parameter by 0.5.
+    /// </remarks>
+    public const float UnderwaterGravityMultiplier = 0.5f;
+
     /// <summary>
     /// Transforms if the ring count allows it, and reports whether it did.
     /// </summary>
@@ -112,8 +128,14 @@ public sealed class Player : GameObject
     public float Acceleration => _physics.GroundAcceleration * _scale;
     public float Friction => _physics.GroundDeceleration * _scale;
     public float MaxSpeed => _physics.TopSpeed * _scale;
-    public float Gravity => _physics.Gravity * _scale;
-    public float JumpVelocity => _physics.JumpImpulse * _scale;
+    public float Gravity =>
+        _physics.Gravity *
+        (IsUnderwater ? UnderwaterGravityMultiplier : 1f) *
+        _scale;
+    public float JumpVelocity =>
+        _physics.JumpImpulse *
+        (IsUnderwater ? UnderwaterJumpMultiplier : 1f) *
+        _scale;
     public float TerminalVelocity => _physics.TerminalVelocity * _scale;
     public float AirAcceleration => _physics.AirAcceleration * _scale;
     public float AirSpeedMax => _physics.AirSpeedMax * _scale;
@@ -164,6 +186,9 @@ public sealed class Player : GameObject
     /// <summary>Whether the player is in the collisionless death sequence.</summary>
     public bool IsDead { get; private set; }
 
+    /// <summary>Whether the player is below the current water surface.</summary>
+    public bool IsUnderwater { get; private set; }
+
     /// <summary>Input for the coming frame, set by the host before stepping.</summary>
     public float InputX { get; set; }
     public bool InputJump { get; set; }
@@ -176,6 +201,11 @@ public sealed class Player : GameObject
     // a spring launch with the button up reads as a released jump and gets
     // double gravity - springs would feel weak for an invisible reason.
     private bool _jumpRising;
+
+    internal void SetUnderwater(bool underwater)
+    {
+        IsUnderwater = underwater;
+    }
 
     private void Think()
     {

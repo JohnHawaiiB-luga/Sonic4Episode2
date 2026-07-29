@@ -7,6 +7,7 @@ public sealed partial class GameEngine
     private Needles? _needles;
     private Lands? _lands;
     private Bumpers? _bumpers;
+    private WaterAreas? _waterAreas;
 
     /// <summary>The shared player-damage behaviour.</summary>
     public Damage DamageBehaviour { get; } = new();
@@ -19,6 +20,9 @@ public sealed partial class GameEngine
 
     /// <summary>The mounted stage's metal bumpers.</summary>
     public Bumpers? Bumpers => Stage is null ? null : _bumpers;
+
+    /// <summary>The mounted stage's water-level regions.</summary>
+    public WaterAreas? WaterAreas => Stage is null ? null : _waterAreas;
 
     /// <summary>Applies the normal damage transition to the active player.</summary>
     public DamageResult DamagePlayer()
@@ -38,9 +42,21 @@ public sealed partial class GameEngine
             _content.Read(ActArchive),
             ActArchive);
         _bumpers = new Bumpers(placements);
+        _waterAreas =
+            Sonic4Episode2.Core.Engine.WaterAreas.FromActArchive(
+                _content.Read(ActArchive));
         if (Player is Player player)
         {
             Lands lands = _lands;
+            WaterAreas waterAreas = _waterAreas;
+            waterAreas.Initialize(player);
+            Action<GameObject>? previousEnter = player.OnEnter;
+            player.OnEnter = instance =>
+            {
+                previousEnter?.Invoke(instance);
+                if (ReferenceEquals(Player, instance))
+                    waterAreas.Step(player);
+            };
             Action<GameObject>? previousCollision = player.OnCollide;
             player.OnCollide = instance =>
             {
