@@ -25,6 +25,12 @@
          takes an IContentSource and an IInputSource precisely so this works. -->
     <Compile Include="..\Sonic4Episode2.Desktop\StageViewerGame.cs"
              Link="StageViewerGame.cs" />
+    <Compile Include="..\Sonic4Episode2.Desktop\StageVertex.cs" Link="StageVertex.cs" />
+    <Compile Include="..\Sonic4Episode2.Desktop\MaterialBlendCheck.cs" Link="MaterialBlendCheck.cs" />
+    <Compile Include="..\Sonic4Episode2.Desktop\MaterialStateCheck.cs" Link="MaterialStateCheck.cs" />
+    <Compile Include="..\Sonic4Episode2.Desktop\MaterialRenderStates.cs" Link="MaterialRenderStates.cs" />
+    <AndroidAsset Include="..\Sonic4Episode2.Desktop\Content\Stage.mgfx"
+                  Link="Assets\Content\Stage.mgfx" />
   </ItemGroup>
 
 </Project>

@@ -13,12 +13,8 @@
 //     shaders against 19 vertex shaders,
 //   * a scene ambient sits under one parallel light.
 //
-// MULTI-TEXTURE. A material binds up to three live textures, by role, and the
-// role is in the stage flag word rather than the array position (verified across
-// all 9,767 materials; see NnTextureStage). The register numbers the game's own
-// shaders use are NOT reproduced: reading every shader's CTAB shows the slot a
-// texture lands in is a property of that shader permutation, not of the texture,
-// so this effect assigns its own — base s0, environment s1.
+// Texture slots depend on the original shader permutation. This effect currently
+// implements base s0 and environment s1; other decoded bindings remain unused.
 
 #if OPENGL
     #define VS_SHADERMODEL vs_3_0
@@ -33,6 +29,9 @@ float4x4 WorldViewProjection;
 // Material terms, per draw batch.
 float4 MaterialDiffuse = float4(1, 1, 1, 1);
 float3 MaterialAmbient = float3(0.3, 0.3, 0.3);
+float LightingEnabled = 1;
+float AlphaComparison = 8;
+float AlphaReference = 0;
 
 // One parallel light. Direction points *from* the light toward the scene.
 float3 LightDirection = float3(0.3, 0.6, 0.75);
@@ -57,6 +56,7 @@ struct VSInput
     float4 Position : POSITION0;
     float3 Normal   : NORMAL0;
     float2 TexCoord : TEXCOORD0;
+    float4 Color    : COLOR0;
 };
 
 struct VSOutput
@@ -64,6 +64,7 @@ struct VSOutput
     float4 Position : POSITION0;
     float2 TexCoord : TEXCOORD0;
     float3 Normal   : TEXCOORD1;
+    float4 Color    : COLOR0;
 };
 
 VSOutput MainVS(VSInput input)
@@ -75,6 +76,7 @@ VSOutput MainVS(VSInput input)
     // unrotated. Posed and skinned geometry is transformed on the CPU before it
     // reaches here (StageAssembler), so it arrives already in world space.
     output.Normal = input.Normal;
+    output.Color = input.Color;
     return output;
 }
 
@@ -82,12 +84,25 @@ VSOutput MainVS(VSInput input)
 float4 ShadeBase(VSOutput input, out float3 normal)
 {
     float4 texel = tex2D(BaseSampler, input.TexCoord);
-    float4 base  = texel * MaterialDiffuse;
+    float4 base  = texel * MaterialDiffuse * input.Color;
+
+    float alpha = saturate(base.a);
+    float reference = AlphaReference / 255.0f;
+    float halfStep = 0.5f / 255.0f;
+    bool alphaPass = AlphaComparison == 8 ||
+        (AlphaComparison == 2 && alpha < reference - halfStep) ||
+        (AlphaComparison == 3 && abs(alpha - reference) <= halfStep) ||
+        (AlphaComparison == 4 && alpha <= reference + halfStep) ||
+        (AlphaComparison == 5 && alpha > reference + halfStep) ||
+        (AlphaComparison == 6 && abs(alpha - reference) > halfStep) ||
+        (AlphaComparison == 7 && alpha >= reference - halfStep);
+    clip(alphaPass ? 1 : -1);
 
     normal = normalize(input.Normal);
     float ndotl = saturate(dot(normal, -normalize(LightDirection)));
 
-    return float4(base.rgb * (MaterialAmbient + LightDiffuse * ndotl), base.a);
+    float3 lighting = LightingEnabled != 0 ? MaterialAmbient + LightDiffuse * ndotl : float3(1, 1, 1);
+    return float4(base.rgb * lighting, base.a);
 }
 
 float4 MainPS(VSOutput input) : COLOR0

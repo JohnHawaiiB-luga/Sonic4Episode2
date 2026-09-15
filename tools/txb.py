@@ -1,8 +1,8 @@
 """Texture bank (`.TXB`) reader for Sonic the Hedgehog 4 Episode II.
 
-A TXB is the index that maps a stage's texture slots to the `.DDS` files sitting
-beside it in the same AMB archive. Unlike AMB, **TXB is big-endian** — a legacy
-of the SEGA NN library's console origins.
+A TXB lists texture names and stored filter values. Most references resolve to
+`.DDS` files in the same AMB archive, with cross-archive references also observed.
+Unlike AMB, **TXB is big-endian**.
 
     0x00  char[4]  '#TXB'
     0x04  u32      header size / version (0x10 in every observed file)
@@ -14,11 +14,13 @@ of the SEGA NN library's console origins.
     entry table: count * 20 bytes
         +0x00  u32  runtime slot, always 0 on disk
         +0x04  u32  absolute offset of the NUL-terminated texture name
-        +0x08  u16  unknown (1 in every observed file)
-        +0x0A  u16  unknown (1 in every observed file)
+        +0x08  u16  raw filter field A
+        +0x0A  u16  raw filter field B
         +0x0C  8 bytes, zero on disk
 
 The string table begins immediately after the entry table.
+Community filter interpretations and observed values are in docs/FORMAT-TXB.md;
+the original PC sampler conversion remains unverified.
 """
 
 from __future__ import annotations

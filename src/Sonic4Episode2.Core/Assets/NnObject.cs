@@ -287,6 +287,43 @@ public sealed class NnVertexList
         return true;
     }
 
+    /// <summary>Packed diffuse colours in RGBA order, or opaque white when absent.</summary>
+    /// <remarks>The D3D color bytes are stored BGRA and are reordered here.</remarks>
+    public bool ReadDiffuseColors(Span<byte> rgba)
+    {
+        if (Count < 0)
+            throw new NnException("negative vertex count");
+        if ((long)Count * 4 > rgba.Length)
+            throw new ArgumentException("destination does not hold one RGBA colour per vertex", nameof(rgba));
+
+        int length = Count * 4;
+        int at = AttributeOffset(VertexFormat.Diffuse);
+        if (at < 0)
+        {
+            rgba[..length].Fill(byte.MaxValue);
+            return false;
+        }
+        if (Stride < 4 || at > Stride - 4)
+            throw new NnException("diffuse colour lies outside the vertex stride");
+
+        var s = _data.Span;
+        long start = (long)NnFile.DataBase + BufferOffset;
+        if (start < 0 || start + (long)Stride * Count > s.Length)
+            throw new NnException("vertex buffer lies outside the file");
+
+        int first = (int)start;
+        for (int i = 0; i < Count; i++)
+        {
+            int source = first + i * Stride + at;
+            int destination = i * 4;
+            rgba[destination] = s[source + 2];
+            rgba[destination + 1] = s[source + 1];
+            rgba[destination + 2] = s[source];
+            rgba[destination + 3] = s[source + 3];
+        }
+        return true;
+    }
+
     private void ReadAttribute(VertexFormat attribute, int components, Span<float> destination)
     {
         int at = AttributeOffset(attribute);
@@ -471,25 +508,6 @@ public sealed record NnNode(
 }
 
 /// <summary>The job a texture stage does, from the low half of its flag word.</summary>
-/// <remarks>
-/// <para>
-/// Recovered by crossing two independent sources over the whole build. The bit
-/// comes out of the material's stage record; the <c>_dif</c>/<c>_env</c>/
-/// <c>_nml</c>/<c>_spe</c> suffix comes out of the model's texture list. Neither
-/// was fitted to the other, so the agreement is real evidence:
-/// </para>
-/// <list type="table">
-/// <item><term>0x0002 Base</term><description>9,403 stages — 2,988 named <c>_dif</c>, the rest unsuffixed</description></item>
-/// <item><term>0x0004 Environment</term><description>1,322 stages — 1,211 named <c>_env</c></description></item>
-/// <item><term>0x0001 Normal</term><description>230 stages — 212 named <c>_nml</c> or <c>_nrm</c></description></item>
-/// <item><term>0x0008 Specular</term><description>65 stages — 65 named <c>_spe</c>, a clean 100%</description></item>
-/// </list>
-/// <para>
-/// The remaining bits (0x0010 x8, 0x0020 x2, 0x0400 x2, 0x0800 x1) are too rare
-/// to name from the data and carry no suffix convention. They stay
-/// <see cref="Unknown"/> rather than being guessed at.
-/// </para>
-/// </remarks>
 public enum TextureRole
 {
     Unknown = 0,
@@ -501,43 +519,39 @@ public enum TextureRole
 
 /// <summary>One texture stage of a material.</summary>
 /// <remarks>
-/// <para>
-/// A 32-byte record: <c>u32 flags</c>, <c>u32 index</c> into the model's texture
-/// list, then floats.
-/// </para>
-/// <para>
-/// <b>Live stages occupy even array positions and only even ones.</b> Measured
-/// across all 9,767 materials and 14,357 records in the build: <b>0 live stages
-/// at an odd position, 0 padding at an even one</b>. So the array interleaves a
-/// live record with an inert <c>0x000N000N</c> one, and a material's live stages
-/// are at positions 0, 2, 4. Whether that means the true record is 64 bytes with
-/// a 32-byte tail, rather than a 32-byte record alternating with padding, is
-/// <b>OPEN</b> — both readings produce identical stage lists, so nothing here
-/// depends on the answer.
-/// </para>
+/// A standard descriptor stores one 64-byte record per declared texture stage.
+/// This type retains its flag word and texture-list index; other descriptor
+/// fields remain outside the current material-binding API.
 /// <para>
 /// <b>The role is in the flag word, not the array position.</b> That correction
-/// matters: <c>POD.ZNO</c> holds <c>pod_nml</c> at position 0, <c>pod_dif</c> at
-/// 2 and <c>pod_1_env</c> at 4, so reading position 0 as "the base map" hands the
-/// renderer a normal map. 230 materials are shaped that way.
+/// matters: <c>POD.ZNO</c> starts with <c>pod_nml</c>, then <c>pod_dif</c> and an
+/// auxiliary map, so reading position 0 as "the base map" hands the renderer a
+/// normal map.
 /// </para>
 /// </remarks>
 /// <param name="Flags">The stage's raw flag word.</param>
 /// <param name="Index">Index into the model's texture list.</param>
 public readonly record struct NnTextureStage(uint Flags, int Index)
 {
-    /// <summary>32 bytes, verified: 14,357 indices decoded, 0 out of range.</summary>
-    public const int Size = 32;
+    internal bool IsStandardDescriptor { get; init; }
+
+    /// <summary>Full standard texture-descriptor extent.</summary>
+    public const int Size = 64;
 
     /// <summary>
-    /// Whether this looks like a live stage rather than inert padding.
+    /// Whether this is a material binding in its parsed descriptor context.
     /// </summary>
     /// <remarks>
-    /// The padding family has a clear high nibble and mirrors its low half into
-    /// its high half (<c>0x00010001</c>, <c>0x00020002</c>, <c>0x00030003</c>).
-    /// Live stages set the top nibble (<c>0x6…</c> or <c>0x2…</c>).
+    /// Standard arrays retain every declared descriptor even when it only has
+    /// low role bits. Direct and legacy stage values retain the historical high
+    /// flag classification.
     /// </remarks>
-    public bool IsLive => (Flags & 0xF0000000u) != 0;
+    public bool IsLive => IsStandardDescriptor || (Flags & 0xF0000000u) != 0;
+
+    public bool Equals(NnTextureStage other)
+        => Flags == other.Flags && Index == other.Index && IsLive == other.IsLive;
+
+    public override int GetHashCode() => HashCode.Combine(Flags, Index, IsLive);
 
     /// <summary>What this stage is for, or <see cref="TextureRole.Unknown"/>.</summary>
     public TextureRole Role => IsLive && Enum.IsDefined(typeof(TextureRole), (int)(Flags & 0xFFFFu))
@@ -567,6 +581,10 @@ public readonly record struct NnTextureStage(uint Flags, int Index)
 /// </remarks>
 public sealed class NnMaterial
 {
+    private const uint StandardShaderDescriptor = 0x10000000u;
+    private const int LegacyTextureStageSize = 32;
+    private const int MaxTextureStageCount = 16;
+
     public uint PointerFlags { get; init; }
     public uint Flags { get; init; }
     public int ColourOffset { get; init; }
@@ -581,23 +599,11 @@ public sealed class NnMaterial
     /// </summary>
     /// <remarks>
     /// The material declares a stage <b>count</b> at <c>+0x14</c> and points at an
-    /// array of <b>32-byte</b> stage records at <c>+0x18</c>. Each record is
-    /// <c>u32 flags</c>, <c>u32 index</c> into the model's texture list, then
-    /// floats. Verified across the build: <b>14,357 stage indices, 0 out of
-    /// range</b>, and the per-count totals sum to the material count exactly —
-    /// 6,967 materials with one stage, 987 with two, 617 with three, 735 with
-    /// four, 125 with five and 336 untextured, which is 9,767.
+    /// optional descriptor array at <c>+0x18</c>. Standard descriptors use one
+    /// full 64-byte record per declared stage.
     /// <para>
-    /// <b>2,464 materials bind more than one texture</b> and the renderer drew
-    /// only the first, because the decoder read a single index. The engine's own
-    /// shader has nine sampler slots — base, three decals, modulate, add,
-    /// opacity, normal and two user samplers (<c>docs/ORACLES.md</c>).
-    /// </para>
-    /// <para>
-    /// This list includes the padding records. Use <see cref="LiveStages"/> to
-    /// walk what the material actually binds: 7,954 materials carry one live
-    /// stage, 1,352 carry two and 125 carry three, so <b>three is the real
-    /// maximum</b>, not the five the raw record count suggests.
+    /// This list retains every declared standard descriptor, including known
+    /// auxiliary stages whose role remains unclassified.
     /// </para>
     /// </remarks>
     public IReadOnlyList<NnTextureStage> Stages { get; init; } = [];
@@ -625,14 +631,15 @@ public sealed class NnMaterial
     /// <summary>How this material blends over what is already drawn.</summary>
     public MaterialBlend Blend { get; init; }
 
+    public MaterialRenderState RenderState { get; init; } = MaterialRenderState.Default;
+
     /// <summary>
     /// The material's ambient term, RGBA.
     /// </summary>
     /// <remarks>
-    /// The colour block holds exactly two RGBA colours — <b>all 9,767 materials
-    /// in the build, no exceptions</b> — and this is the first. It clusters hard
-    /// on uniform grey (0.3,0.3,0.3 on 4,859 materials) or black (2,792), which
-    /// is an ambient-level signature rather than a surface colour.
+    /// The first colour term after the colour-block flags. It clusters hard on
+    /// uniform grey (0.3,0.3,0.3 on 4,859 materials) or black (2,792), which is
+    /// an ambient-level signature rather than a surface colour.
     /// </remarks>
     public (float R, float G, float B, float A) Ambient { get; init; } = (0, 0, 0, 1);
 
@@ -640,7 +647,7 @@ public sealed class NnMaterial
     /// The material's diffuse term, RGBA. Modulates the texture.
     /// </summary>
     /// <remarks>
-    /// The second colour of the block. <b>Pure white on 87.6% of materials</b> —
+    /// The second colour term after the block flags. <b>Pure white on 87.6% of materials</b> —
     /// i.e. "show the texture unchanged" — while its <b>alpha carries per-material
     /// transparency</b> (1.0 on 9,154, but 0.0, 0.25, 0.41, 0.6 and 0.98 all
     /// occur). White-with-meaningful-alpha is the classic diffuse signature, and
@@ -653,65 +660,86 @@ public sealed class NnMaterial
     {
         int at = NnFile.DataBase + offset;
         int? texture = null;
-
-        // The render-state block is 16 u16s; words 2 and 3 are the D3D9 source
-        // and destination blend factors. SRCALPHA/INVSRCALPHA (5,6) is ordinary
-        // transparency; SRCALPHA/ONE (5,2) is additive, the glow blend 2,761
-        // materials use. Read straight from the block at StateOffset.
-        var blend = MaterialBlend.Alpha;
+        uint flags = BinaryPrimitives.ReadUInt32LittleEndian(data[at..]);
         int stateOffset = BinaryPrimitives.ReadInt32LittleEndian(data[(at + 12)..]);
-        if (stateOffset > 0 && NnFile.DataBase + stateOffset + 8 <= data.Length)
+
+        // The recognized render-state prefix has 28 meaningful bytes: logic,
+        // blend factors, alpha/depth comparisons, and alpha reference. Existing
+        // RGB blend classification only needs the source and destination factors.
+        var blend = MaterialBlend.Alpha;
+        if (TryStateBlock(data, stateOffset, 8, out int blendState))
         {
-            int sb = NnFile.DataBase + stateOffset;
-            int src = BinaryPrimitives.ReadUInt16LittleEndian(data[(sb + 4)..]);
-            int dst = BinaryPrimitives.ReadUInt16LittleEndian(data[(sb + 6)..]);
+            int src = BinaryPrimitives.ReadUInt16LittleEndian(data[(blendState + 4)..]);
+            int dst = BinaryPrimitives.ReadUInt16LittleEndian(data[(blendState + 6)..]);
             blend = (D3dBlend)dst == D3dBlend.One ? MaterialBlend.Additive
                   : MaterialBlend.Alpha;
         }
 
-        // The stage count sits at +0x14 and the array of 32-byte stage records at
-        // +0x18. Reading only the first record is what limited 2,464 multi-textured
-        // materials to their base map.
+        bool standardShaderDescriptor = pointerFlags == StandardShaderDescriptor;
+        var renderState = MaterialRenderState.Default;
+        if (standardShaderDescriptor &&
+            TryStateBlock(data, stateOffset, 28, out int state))
+        {
+            uint logic = BinaryPrimitives.ReadUInt32LittleEndian(data[state..]);
+            bool alphaTest = (logic & (1u << 3)) != 0;
+            bool depthTest = (logic & (1u << 4)) != 0;
+            renderState = new MaterialRenderState(
+                LightingEnabled: (flags & (1u << 1)) == 0,
+                BlendEnabled: (logic & 1u) != 0,
+                DepthTestEnabled: depthTest,
+                DepthWriteEnabled: (flags & (1u << 8)) == 0,
+                ColorWriteMask: ColorWriteMask(flags),
+                AlphaComparison: alphaTest
+                    ? ValidComparisonOrThrow(BinaryPrimitives.ReadUInt16LittleEndian(data[(state + 20)..]), "alpha")
+                    : (byte)8,
+                AlphaReference: alphaTest
+                    ? unchecked((byte)BinaryPrimitives.ReadUInt32LittleEndian(data[(state + 24)..]))
+                    : (byte)0,
+                DepthComparison: depthTest
+                    ? ValidComparisonOrThrow(BinaryPrimitives.ReadUInt16LittleEndian(data[(state + 22)..]), "depth")
+                    : (byte)4);
+        }
+
+        // The optional stage block starts at +0x18. Standard descriptors advance
+        // over their full 64-byte extent; unrecognized descriptors retain the
+        // earlier 32-byte compatibility path.
         NnTextureStage[] stages = [];
         if (relocations.Contains(offset + 0x18))
         {
             int block = BinaryPrimitives.ReadInt32LittleEndian(data[(at + 0x18)..]);
             int count = BinaryPrimitives.ReadInt32LittleEndian(data[(at + 0x14)..]);
-            int start = NnFile.DataBase + block;
-            if (block != 0 && count is > 0 and <= 16 &&
-                start + count * NnTextureStage.Size <= data.Length)
-            {
-                stages = new NnTextureStage[count];
-                for (int s = 0; s < count; s++)
-                {
-                    int r = start + s * NnTextureStage.Size;
-                    stages[s] = new NnTextureStage(
-                        BinaryPrimitives.ReadUInt32LittleEndian(data[r..]),
-                        BinaryPrimitives.ReadInt32LittleEndian(data[(r + 4)..]));
-                }
-            }
+            stages = ReadTextureStages(
+                data,
+                count,
+                block,
+                standardShaderDescriptor ? NnTextureStage.Size : LegacyTextureStageSize,
+                strict: standardShaderDescriptor);
+
             // The base map is the stage whose ROLE says base, not record 0.
-            // POD.ZNO orders its stages normal, diffuse, environment; 230
-            // materials in the build lead with a normal map, and reading record 0
-            // hands every one of them a normal map to draw as its diffuse.
+            // POD.ZNO orders normal, base, and auxiliary descriptors, so reading
+            // record 0 can hand the renderer a normal map as its diffuse input.
             foreach (var stage in stages)
                 if (stage.IsBase) { texture = stage.Index; break; }
             if (texture is null)
                 foreach (var stage in stages)
                     if (stage.IsLive) { texture = stage.Index; break; }
-            if (texture is null && block != 0 && start + 8 <= data.Length)
-                texture = BinaryPrimitives.ReadInt32LittleEndian(data[(start + 4)..]);
+            if (!standardShaderDescriptor && texture is null &&
+                TryFirstTextureIndex(data, block, out int firstTexture))
+                texture = firstTexture;
         }
 
-        // The colour block: u32 count, then that many RGBA quads. Count is 2 on
-        // every material in the build — ambient first, diffuse second.
+        // Standard descriptors use the leading word as flags, followed by
+        // ambient and diffuse RGBA terms. Retain the legacy count gate for
+        // unrecognized descriptors.
         var ambient = (0f, 0f, 0f, 1f);
         var diffuse = (1f, 1f, 1f, 1f);
         int colourOffset = BinaryPrimitives.ReadInt32LittleEndian(data[(at + 8)..]);
-        if (colourOffset > 0 && NnFile.DataBase + colourOffset + 4 + 32 <= data.Length)
+        long colourBlock = (long)NnFile.DataBase + colourOffset;
+        if (colourOffset > 0 && colourBlock + 4 + 32 <= data.Length)
         {
-            int cb = NnFile.DataBase + colourOffset;
-            if (BinaryPrimitives.ReadUInt32LittleEndian(data[cb..]) >= 2)
+            int cb = (int)colourBlock;
+            if (standardShaderDescriptor ||
+                BinaryPrimitives.ReadUInt32LittleEndian(data[cb..]) >= 2)
             {
                 ambient = (Le.F32(data, cb + 4), Le.F32(data, cb + 8),
                            Le.F32(data, cb + 12), Le.F32(data, cb + 16));
@@ -723,15 +751,103 @@ public sealed class NnMaterial
         return new NnMaterial
         {
             PointerFlags = pointerFlags,
-            Flags = BinaryPrimitives.ReadUInt32LittleEndian(data[at..]),
+            Flags = flags,
             ColourOffset = colourOffset,
-            StateOffset = BinaryPrimitives.ReadInt32LittleEndian(data[(at + 12)..]),
+            StateOffset = stateOffset,
             TextureIndex = texture,
             Stages = stages,
             Blend = blend,
+            RenderState = renderState,
             Ambient = ambient,
             Diffuse = diffuse,
         };
+    }
+
+    private static bool TryStateBlock(
+        ReadOnlySpan<byte> data,
+        int offset,
+        int length,
+        out int state)
+    {
+        long at = (long)NnFile.DataBase + offset;
+        if (offset <= 0 || at < 0 || at + length > data.Length)
+        {
+            state = 0;
+            return false;
+        }
+
+        state = (int)at;
+        return true;
+    }
+
+    private static NnTextureStage[] ReadTextureStages(
+        ReadOnlySpan<byte> data,
+        int count,
+        int block,
+        int stride,
+        bool strict)
+    {
+        if (count == 0) return [];
+        if (count < 0 || count > MaxTextureStageCount)
+        {
+            if (strict) throw new NnException($"texture stage count {count} is outside the supported range");
+            return [];
+        }
+        if (block <= 0)
+        {
+            if (strict) throw new NnException("texture stage array has no descriptor offset");
+            return [];
+        }
+
+        long start = (long)NnFile.DataBase + block;
+        long end = start + (long)count * stride;
+        if (start < 0 || end > data.Length)
+        {
+            if (strict) throw new NnException("texture stage array lies outside the file");
+            return [];
+        }
+
+        var stages = new NnTextureStage[count];
+        for (int s = 0; s < count; s++)
+        {
+            int descriptor = (int)(start + (long)s * stride);
+            stages[s] = new NnTextureStage(
+                BinaryPrimitives.ReadUInt32LittleEndian(data[descriptor..]),
+                BinaryPrimitives.ReadInt32LittleEndian(data[(descriptor + 4)..]))
+            {
+                IsStandardDescriptor = strict,
+            };
+        }
+        return stages;
+    }
+
+    private static bool TryFirstTextureIndex(ReadOnlySpan<byte> data, int block, out int texture)
+    {
+        long start = (long)NnFile.DataBase + block;
+        if (block <= 0 || start < 0 || start + 8 > data.Length)
+        {
+            texture = 0;
+            return false;
+        }
+
+        texture = BinaryPrimitives.ReadInt32LittleEndian(data[((int)start + 4)..]);
+        return true;
+    }
+
+    private static byte ColorWriteMask(uint flags)
+    {
+        byte mask = 0;
+        if ((flags & (1u << 9)) == 0) mask |= 0x01;
+        if ((flags & (1u << 10)) == 0) mask |= 0x02;
+        if ((flags & (1u << 11)) == 0) mask |= 0x04;
+        if ((flags & (1u << 12)) == 0) mask |= 0x08;
+        return mask;
+    }
+
+    private static byte ValidComparisonOrThrow(ushort value, string kind)
+    {
+        if (value is >= 1 and <= 8) return (byte)value;
+        throw new NnException($"{kind} comparison {value} is outside the D3DCMP range");
     }
 }
 

@@ -35,6 +35,11 @@ public sealed partial class GameEngine
     public const int PriorityCamera = 0x3000;
 
     private readonly IContentSource _content;
+    private byte[]? _mountedActData;
+    private string? _mountedActArchive;
+    private string _mountedStatus = "";
+    private float _spawnX;
+    private float _spawnSearchY;
 
     /// <summary>Runs against an installed copy of the game on disk.</summary>
     public GameEngine(string gameRoot) : this(new FileSystemContent(gameRoot)) { }
@@ -89,7 +94,7 @@ public sealed partial class GameEngine
     /// <summary>Rings the player is carrying.</summary>
     public int RingCount { get; private set; }
 
-    /// <summary>Lives in hand. Starts at the series' usual three; a 1-UP adds one.</summary>
+    /// <summary>Remaining-life counter; the prototype starts it at three.</summary>
     public int Lives { get; private set; } = 3;
 
     /// <summary>The mounted stage's springs.</summary>
@@ -129,9 +134,13 @@ public sealed partial class GameEngine
 
     public string? StageName { get; private set; }
     public ulong Frame { get; private set; }
+    public ulong StageFrame { get; private set; }
+    public ulong StageAttempt { get; private set; }
 
     /// <summary>Act archive the stage scene will mount, relative to the root.</summary>
     public string ActArchive { get; set; } = "G_ZONE1/MAP/ZONE11_MAP.AMB";
+
+    public IReadOnlyDictionary<string, StageSceneData>? NativeScenes { get; init; }
 
     /// <summary>
     /// Cell the player is dropped into, or null to use a point near the act's
@@ -170,7 +179,8 @@ public sealed partial class GameEngine
     private void EnterStage()
     {
         string actPath = ActArchive;
-        var archive = AmbArchive.Parse(_content.Read(actPath));
+        var actData = (byte[])_content.Read(actPath).Clone();
+        var archive = AmbArchive.Parse(actData);
 
         string? tilesetPath = FindTileset(actPath, _content);
         if (tilesetPath is null)
@@ -181,6 +191,7 @@ public sealed partial class GameEngine
         var placements = new List<Placement>();
         var rings = new List<Ring>();
         int layers = 0;
+        var nativeLayers = new HashSet<string>(StringComparer.Ordinal);
 
         // Ground shapes and their angles live in the zone's ATTR archive.
         var (shapes, angles) = LoadShapes(actPath, _content);
@@ -218,9 +229,19 @@ public sealed partial class GameEngine
             if (suffix is null) continue;
 
             var grid = StageGrid.Parse(label, archive.Read(entry).Span);
-            assembler.AddLayer(grid, suffix, batch);
+            string layer = label[..^3].ToUpperInvariant();
+            if (NativeScenes is not null && NativeScenes.TryGetValue(layer, out var nativeScene))
+            {
+                assembler.AddLayer(grid, nativeScene, batch);
+                nativeLayers.Add(layer);
+            }
+            else
+                assembler.AddLayer(grid, suffix, batch);
             layers++;
         }
+
+        if (NativeScenes is not null && NativeScenes.Keys.Any(layer => !nativeLayers.Contains(layer)))
+            throw new InvalidDataException("requested native scene layer was not found in the stage");
 
         if (attributeGrid is not null)
             Collision = CollisionMap.FromGrid(attributeGrid, shapes, angles);
@@ -228,12 +249,10 @@ public sealed partial class GameEngine
         Stage = batch;
         Placements = placements;
         Rings = rings;
-        RingField = new RingField(rings);
-        RingCount = 0;
-        Springs = new Springs(placements);
-        DashPanels = new DashPanels(placements);
-        ItemBoxes = new ItemBoxes(placements);
+        _mountedActData = actData;
+        _mountedActArchive = actPath;
         StageName = NameOf(actPath);
+        StartStageAttempt(resolveSpawn: true);
         // Report what the placements actually became. A behaviour wired to the
         // wrong object id spawns nothing and looks identical to one that works,
         // which is exactly how springs sat on an unplaced id for two beats.
@@ -241,10 +260,24 @@ public sealed partial class GameEngine
         Status = $"{assembler.TilesPlaced} tiles, {batch.VertexCount:N0} vertices, " +
                  $"{batch.TriangleCount:N0} triangles, " +
                  $"{layers} layers, {identified}/{placements.Count} placements identified, " +
-                 $"{Springs.Count} springs, {DashPanels.Count} dash panels, " +
-                 $"{ItemBoxes.Count} item boxes, {rings.Count} rings" +
+                 $"{Springs!.Count} springs, {DashPanels!.Count} dash panels, " +
+                 $"{ItemBoxes!.Count} item boxes, {rings.Count} rings" +
                  (Collision?.HasShapes == true ? ", height fields" : ", blocky collision") +
                  (Collision?.HasAngles == true ? " with angles" : "");
+        _mountedStatus = Status;
+    }
+
+    private void StartStageAttempt(bool resolveSpawn = false)
+    {
+        var placements = Placements;
+        ResetDeathWait();
+        StageFrame = 0;
+        StageAttempt++;
+        RingField = new RingField(Rings);
+        RingCount = 0;
+        Springs = new Springs(placements);
+        DashPanels = new DashPanels(placements);
+        ItemBoxes = new ItemBoxes(placements);
 
         // The map is a task like anything else, so it obeys pause levels and is
         // torn down with the scene rather than by special-case code.
@@ -277,16 +310,19 @@ public sealed partial class GameEngine
             Player = Objects.Add(new Player(Collision));
             // The real spawn is the act's start marker; the cell overrides exist
             // for debugging, and the fraction fallback for acts without one.
-            float spawnX = SpawnCellX is not null ? SpawnCellX.Value * Collision.CellSize
-                : start is not null ? start.Value.X * scale
-                : Collision.Width * Collision.CellSize * 0.06f;
-            float spawnY = SpawnCellY is not null ? -SpawnCellY.Value * Collision.CellSize
-                : start is not null ? -start.Value.Y * scale + Collision.CellSize
-                : -Collision.Height * Collision.CellSize * 0.1f;
-            Player.PlaceOnGround(spawnX, spawnY);
+            if (resolveSpawn)
+            {
+                _spawnX = SpawnCellX is not null ? SpawnCellX.Value * Collision.CellSize
+                    : start is not null ? start.Value.X * scale
+                    : Collision.Width * Collision.CellSize * 0.06f;
+                _spawnSearchY = SpawnCellY is not null ? -SpawnCellY.Value * Collision.CellSize
+                    : start is not null ? -start.Value.Y * scale + Collision.CellSize
+                    : -Collision.Height * Collision.CellSize * 0.1f;
+            }
+            Player.PlaceOnGround(_spawnX, _spawnSearchY);
         }
 
-        MountBehaviours(placements);
+        MountBehaviours(placements, _mountedActData!, _mountedActArchive!);
     }
 
     /// <summary>
@@ -343,17 +379,36 @@ public sealed partial class GameEngine
 
     private void ExitStage()
     {
-        Scheduler.DeleteGroup(SceneGroup);
+        _restartRequested = false;
+        ClearStageAttempt();
+        _restartRequested = false;
+        _newRunRequested = false;
+        if (GameOver) Scheduler.EndPause();
+        ResetDeathWait();
         Stage = null;
         StageName = null;
         Collision = null;
-        Player = null;
         Placements = [];
         Rings = [];
+        _mountedActData = null;
+        _mountedActArchive = null;
+        _mountedStatus = "";
+    }
+
+    private void ClearStageAttempt()
+    {
+        Scheduler.DeleteGroup(SceneGroup, Objects.Clear);
+        Player = null;
         RingField = null;
         RingCount = 0;
         Springs = null;
         DashPanels = null;
+        ItemBoxes = null;
+        _needles = null;
+        _lands = null;
+        _bumpers = null;
+        _waterAreas = null;
+        _hariSenbos = null;
         GoalPosition = null;
         ActClear = false;
     }
@@ -366,7 +421,7 @@ public sealed partial class GameEngine
     /// </remarks>
     private void CheckGoal()
     {
-        if (ActClear || GoalPosition is null || Player is null) return;
+        if (ActClear || GoalPosition is null || Player is null || Player.IsDead) return;
         var goal = GoalPosition.Value;
         if (Player.Position.X >= goal.X &&
             MathF.Abs(Player.Position.Y - goal.Y) < 64f * Assets.PlayerPhysics.WorldPerPixel)
@@ -379,7 +434,7 @@ public sealed partial class GameEngine
     /// <summary>Fires a dash panel under the player.</summary>
     private void CheckDashPanels()
     {
-        if (DashPanels is null || Player is null) return;
+        if (DashPanels is null || Player is null || Player.IsDead) return;
         float? boost = DashPanels.Check(new System.Numerics.Vector2(
             Player.Position.X, Player.Position.Y));
         if (boost is not null)
@@ -389,7 +444,7 @@ public sealed partial class GameEngine
     /// <summary>Fires a spring under the player.</summary>
     private void CheckSprings()
     {
-        if (Springs is null || Player is null) return;
+        if (Springs is null || Player is null || Player.IsDead) return;
         float? impulse = Springs.Check(new System.Numerics.Vector2(
             Player.Position.X, Player.Position.Y));
         if (impulse is not null) Player.Bounce(impulse.Value);
@@ -398,7 +453,7 @@ public sealed partial class GameEngine
     /// <summary>Breaks any item box the player is touching, granting its item.</summary>
     private void CheckItemBoxes()
     {
-        if (ItemBoxes is null || Player is null) return;
+        if (ItemBoxes is null || Player is null || Player.IsDead) return;
         foreach (var item in ItemBoxes.Check(new System.Numerics.Vector2(
                      Player.Position.X, Player.Position.Y)))
         {
@@ -421,7 +476,7 @@ public sealed partial class GameEngine
     /// <summary>Hands the player any ring it is standing in.</summary>
     private void CollectRings()
     {
-        if (RingField is null || Player is null) return;
+        if (RingField is null || Player is null || Player.IsDead) return;
         RingCount += RingField.Collect(new System.Numerics.Vector2(
             Player.Position.X, Player.Position.Y));
         Player.TryGoSuper(RingCount);
@@ -431,7 +486,10 @@ public sealed partial class GameEngine
     public void Step()
     {
         Events.Step();
+        ApplyPendingRestart();
         Scheduler.Step();
+        UpdateDeathWait();
+        if (Stage is not null && Scheduler.PauseLevel < 0) StageFrame++;
         Frame++;
     }
 

@@ -34,7 +34,8 @@ public readonly record struct DamageResult(
 /// A ringed hit clears the carried count but does not yet spawn the original's
 /// recoverable dropped-ring objects. A ringless hit follows
 /// <c>GmPlySeqInitDeath</c> (arm64 <c>0x005B9910</c>), whose launch uses the
-/// active player row's jump impulse. Respawn and life consumption remain open.
+/// active player row's jump impulse. The ordinary death wait and life decision
+/// are handled by <see cref="DeathWait"/> and the stage restart lifecycle.
 /// </para>
 /// <para>
 /// Super and special-state branches use different knockback and ring rules.

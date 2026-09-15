@@ -30,6 +30,7 @@ public sealed class TaskScheduler
 {
     private readonly List<TaskControlBlock> _tasks = [];
     private readonly List<TaskControlBlock> _pending = [];
+    private readonly HashSet<int> _deletingGroups = [];
     private bool _running;
 
     /// <summary>-1 when nothing is paused.</summary>
@@ -59,6 +60,12 @@ public sealed class TaskScheduler
             PauseLevel = ignoresPause ? int.MaxValue : pauseLevel,
         };
 
+        if (_deletingGroups.Contains(group))
+        {
+            Delete(task);
+            return task;
+        }
+
         // Creating a task from inside a running procedure must not disturb the
         // walk, so it queues until the frame ends.
         if (_running) _pending.Add(task);
@@ -82,14 +89,36 @@ public sealed class TaskScheduler
     }
 
     /// <summary>Deletes every task in a group — how a scene tears itself down.</summary>
-    public int DeleteGroup(int group)
+    public int DeleteGroup(int group) => DeleteGroup(group, null);
+
+    internal int DeleteGroup(int group, Action? afterDelete)
     {
+        if (!_deletingGroups.Add(group)) return 0;
+
         int deleted = 0;
-        foreach (var task in _tasks)
+        try
         {
-            if (task.Group != group || task.Deleted) continue;
-            Delete(task);
-            deleted++;
+            var candidates = new List<TaskControlBlock>(_tasks.Count + _pending.Count);
+            foreach (var task in _tasks)
+            {
+                if (task.Group == group && !task.Deleted) candidates.Add(task);
+            }
+            foreach (var task in _pending)
+            {
+                if (task.Group == group && !task.Deleted) candidates.Add(task);
+            }
+
+            foreach (var task in candidates)
+            {
+                if (task.Deleted) continue;
+                Delete(task);
+                deleted++;
+            }
+            afterDelete?.Invoke();
+        }
+        finally
+        {
+            _deletingGroups.Remove(group);
         }
         return deleted;
     }
@@ -123,7 +152,10 @@ public sealed class TaskScheduler
         }
 
         _tasks.RemoveAll(t => t.Deleted);
-        foreach (var task in _pending) Insert(task);
+        foreach (var task in _pending)
+        {
+            if (!task.Deleted) Insert(task);
+        }
         _pending.Clear();
     }
 }

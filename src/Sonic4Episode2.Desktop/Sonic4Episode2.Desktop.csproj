@@ -6,6 +6,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(PlayablePreview)' == 'true'">
+    <OutputType>WinExe</OutputType>
+    <UseAppHost>true</UseAppHost>
+    <DefineConstants>$(DefineConstants);PLAYABLE_PREVIEW_GUI</DefineConstants>
+  </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.5" />
@@ -17,7 +22,7 @@
 
   <!-- Compiled with mgfxc; see Content/Stage.fx for how to rebuild it. -->
   <ItemGroup>
-    <None Include="Content\Stage.mgfx" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Content\Stage.mgfx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

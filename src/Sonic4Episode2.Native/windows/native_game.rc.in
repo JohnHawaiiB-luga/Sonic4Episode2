@@ -1,0 +1,29 @@
+#include <windows.h>
+
+101 ICON "@SONIC4EP2_NATIVE_GAME_ICON_RC@"
+
+1 VERSIONINFO
+FILEVERSION 0,0,0,1
+PRODUCTVERSION 0,0,0,1
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS VS_FF_PRERELEASE
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "Sonic the Hedgehog 4 Episode II - Decomp WIP\0"
+            VALUE "FileVersion", "0.0.0.1 WIP\0"
+            VALUE "InternalName", "Sonic-Decomp\0"
+            VALUE "OriginalFilename", "Sonic-Decomp.exe\0"
+            VALUE "ProductName", "Sonic 4 Episode II Native Decomp WIP\0"
+            VALUE "ProductVersion", "0.0.0.1 WIP\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

@@ -43,6 +43,7 @@ public sealed class StageAssembler
     };
 
     private readonly Dictionary<int, TileMesh?> _cache = [];
+    private readonly Dictionary<int, TileMesh?> _nativeCache = [];
     private readonly AmbArchive _tileset;
 
     public StageAssembler(AmbArchive tileset) => _tileset = tileset;
@@ -75,9 +76,33 @@ public sealed class StageAssembler
         }
     }
 
-    private TileMesh? GetTile(int id)
+    public void AddLayer(StageGrid grid, StageSceneData scene, StageBatch batch)
     {
-        if (_cache.TryGetValue(id, out var cached)) return cached;
+        if (grid.Depth != 2 || grid.Width != scene.Width || grid.Height != scene.Height ||
+            _tileset.Count != scene.ModelCount ||
+            !string.Equals(Path.GetFileNameWithoutExtension(grid.Name), scene.Layer,
+                           StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("native scene does not match the stage or model archive");
+        foreach (var instance in scene.Instances)
+        {
+            var mesh = GetTile(instance.Model, native: true);
+            if (mesh is null)
+            {
+                var model = NnModel.Load(_tileset.Read(_tileset.Entries[instance.Model]));
+                if (model is null || !model.Header.IsLocator)
+                    throw new InvalidDataException("native scene selected an unreadable model");
+                TilesSkipped++;
+                continue;
+            }
+            batch.Add(mesh, instance.Matrix, instance.X * CellSize);
+            TilesPlaced++;
+        }
+    }
+
+    private TileMesh? GetTile(int id, bool native = false)
+    {
+        var cache = native ? _nativeCache : _cache;
+        if (cache.TryGetValue(id, out var cached)) return cached;
 
         TileMesh? mesh = null;
         if (id >= 0 && id < _tileset.Count)
@@ -86,14 +111,14 @@ public sealed class StageAssembler
             {
                 var model = NnModel.Load(_tileset.Read(_tileset.Entries[id]));
                 if (model is not null && !model.Header.IsLocator)
-                    mesh = TileMesh.From(model);
+                    mesh = native ? TileMesh.ForNativeStage(model) : TileMesh.From(model);
             }
             catch (Exception ex) when (ex is NnException or AmbException)
             {
                 mesh = null;
             }
         }
-        _cache[id] = mesh;
+        cache[id] = mesh;
         return mesh;
     }
 }
@@ -117,7 +142,40 @@ public sealed class TileMesh
     /// </remarks>
     public required float[] Normals { get; init; }
 
+    public byte[] Colors { get; init; } = [];
+
     public static TileMesh From(NnModel model) => Build(model, worldMatrices: null);
+
+    public static TileMesh ForRigidModel(NnModel model)
+    {
+        int count = model.Header.MatrixPaletteCount;
+        if (count <= 0 || count > model.Nodes.Count || !NodeTransforms.IsWellFormed(model.Nodes) ||
+            model.VertexLists.Any(list => list.IsSkinned) ||
+            model.Nodes.Where((node, index) => node.Parent >= index ||
+                node.MatrixIndex < -1 || node.MatrixIndex >= count ||
+                (node.Flags & 0x1C3F00u) != 0).Any() ||
+            model.Nodes.Where(node => node.MatrixIndex >= 0).Select(node => node.MatrixIndex)
+                .Distinct().Count() != count ||
+            model.Nodes.Count(node => node.MatrixIndex >= 0) != count ||
+            model.MeshSets.Any(mesh => mesh.NodeIndex < 0 || mesh.NodeIndex >= model.Nodes.Count ||
+                mesh.MatrixIndex < 0 || mesh.MatrixIndex >= count ||
+                model.Nodes[mesh.NodeIndex].MatrixIndex != mesh.MatrixIndex))
+            throw new InvalidDataException("background requires supported rigid model bindings");
+        var palette = MatrixPalette.Build(model.Nodes, NodeTransforms.World(model.Nodes), count);
+        return Build(model, worldMatrices: null, rigidPalette: palette);
+    }
+
+    public static TileMesh ForNativeStage(NnModel model)
+    {
+        if (model.Nodes.Count != 1 || !NodeTransforms.IsWellFormed(model.Nodes) ||
+            model.VertexLists.Any(list => list.IsSkinned) ||
+            model.Header.MatrixPaletteCount != 1 || model.Nodes[0].MatrixIndex != 0 ||
+            model.MeshSets.Any(mesh => mesh.NodeIndex != 0 || mesh.MatrixIndex != 0) ||
+            (model.Nodes[0].Flags & 0x1C3F00u) != 0)
+            throw new InvalidDataException("native preview requires a supported single-node rigid stage model");
+        var palette = MatrixPalette.Build(model.Nodes, NodeTransforms.World(model.Nodes), 1);
+        return Build(model, worldMatrices: null, rigidPalette: palette);
+    }
 
     /// <summary>
     /// The model's geometry skinned by the matrix palette — a posed frame of a
@@ -152,11 +210,12 @@ public sealed class TileMesh
         Build(model, worldMatrices);
 
     private static TileMesh Build(NnModel model, IReadOnlyList<Matrix4x4>? worldMatrices,
-                                  Matrix4x4[]? palette = null)
+                                  Matrix4x4[]? palette = null, Matrix4x4[]? rigidPalette = null)
     {
         var positions = new List<float>();
         var texCoords = new List<float>();
         var normals = new List<float>();
+        var colors = new List<byte>();
         var indices = new List<int>();
         var materials = new List<MaterialKey>();
 
@@ -179,14 +238,18 @@ public sealed class TileMesh
             var nrmBuffer = new float[vertexList.Count * 3];
             bool hasNormals = vertexList.ReadNormals(nrmBuffer);
 
+            var colorBuffer = new byte[vertexList.Count * 4];
+            vertexList.ReadDiffuseColors(colorBuffer);
+
             // Skinned: blend palette matrices per vertex. Posed: ride the node's
             // world matrix. Still: re-centre on the bbox, the behaviour From has
             // always had.
             bool skinned = palette is not null && vertexList.IsSkinned &&
                            vertexList.MatrixIndices.Count > 0;
-            bool posed = !skinned && worldMatrices is not null &&
-                         mesh.NodeIndex >= 0 && mesh.NodeIndex < worldMatrices.Count;
-            Matrix4x4 transform = posed ? worldMatrices![mesh.NodeIndex] : Matrix4x4.Identity;
+            bool posed = rigidPalette is not null || (!skinned && worldMatrices is not null &&
+                         mesh.NodeIndex >= 0 && mesh.NodeIndex < worldMatrices.Count);
+            Matrix4x4 transform = rigidPalette is not null ? rigidPalette[mesh.MatrixIndex] :
+                                  posed ? worldMatrices![mesh.NodeIndex] : Matrix4x4.Identity;
 
             Span<float> weights = stackalloc float[4];
             Span<byte> bones = stackalloc byte[4];
@@ -232,6 +295,11 @@ public sealed class TileMesh
                 }
                 texCoords.Add(hasUv ? uvBuffer[i * 2 + 0] : 0f);
                 texCoords.Add(hasUv ? uvBuffer[i * 2 + 1] : 0f);
+                int color = i * 4;
+                colors.Add(colorBuffer[color]);
+                colors.Add(colorBuffer[color + 1]);
+                colors.Add(colorBuffer[color + 2]);
+                colors.Add(colorBuffer[color + 3]);
 
                 // Normals ride the same transform as the position, minus the
                 // translation — a posed or skinned mesh must not keep bind-pose
@@ -246,8 +314,14 @@ public sealed class TileMesh
                 normals.Add(n.Z);
             }
 
+            var renderState = mesh.MaterialIndex >= 0 && mesh.MaterialIndex < model.Materials.Count
+                ? model.Materials[mesh.MaterialIndex].RenderState
+                : MaterialRenderState.Default;
             var material = new MaterialKey(model.TexturesFor(mesh), model.BlendFor(mesh),
-                                           model.DiffuseFor(mesh));
+                                            model.DiffuseFor(mesh))
+            {
+                RenderState = renderState,
+            };
             foreach (var (a, b, c) in model.PrimitiveLists[mesh.PrimitiveListIndex].Triangles())
             {
                 if (a >= vertexList.Count || b >= vertexList.Count || c >= vertexList.Count) continue;
@@ -263,6 +337,7 @@ public sealed class TileMesh
             Positions = [.. positions],
             TexCoords = [.. texCoords],
             Normals = [.. normals],
+            Colors = [.. colors],
             Indices = [.. indices],
             TriangleMaterials = [.. materials],
         };
@@ -299,6 +374,8 @@ public readonly record struct MaterialKey(
     MaterialTextures Textures, MaterialBlend Blend,
     (float R, float G, float B, float A) Diffuse)
 {
+    public MaterialRenderState RenderState { get; init; } = MaterialRenderState.Default;
+
     /// <summary>The diffuse map, or null when the material is untextured.</summary>
     public string? Base => Textures.Base;
 
@@ -338,6 +415,8 @@ public sealed class StageBatch
 
     /// <summary>Per-vertex normals, xyz triples, parallel to <see cref="Positions"/>.</summary>
     public List<float> Normals { get; } = [];
+
+    public List<byte> Colors { get; } = [];
 
     public List<int> Indices { get; } = [];
 
@@ -409,21 +488,54 @@ public sealed class StageBatch
     public int VertexCount => Positions.Count / 3;
 
     public void Add(TileMesh mesh, float offsetX, float offsetY, float depth)
+        => Add(mesh, offsetX, offsetY, depth, null, offsetX);
+
+    public void Add(TileMesh mesh, Matrix4x4 transform, float anchorX)
+        => Add(mesh, 0f, 0f, 0f, transform, anchorX);
+
+    private void Add(TileMesh mesh, float offsetX, float offsetY, float depth,
+                     Matrix4x4? transform, float anchorX)
     {
         int baseIndex = Positions.Count / 3;
-        for (int i = 0, v = 0; i < mesh.Positions.Length; i += 3, v += 2)
+        for (int i = 0, v = 0, color = 0; i < mesh.Positions.Length; i += 3, v += 2, color += 4)
         {
-            float x = mesh.Positions[i] + offsetX;
-            float y = mesh.Positions[i + 1] + offsetY;
+            var position = transform is { } matrix
+                ? Vector3.Transform(new Vector3(mesh.Positions[i], mesh.Positions[i + 1], mesh.Positions[i + 2]), matrix) * StageSceneData.DisplayScale
+                : new Vector3(mesh.Positions[i] + offsetX, mesh.Positions[i + 1] + offsetY, mesh.Positions[i + 2] + depth);
+            float x = position.X;
+            float y = position.Y;
             Positions.Add(x);
             Positions.Add(y);
-            Positions.Add(mesh.Positions[i + 2] + depth);
+            Positions.Add(position.Z);
             TexCoords.Add(mesh.TexCoords[v]);
             TexCoords.Add(mesh.TexCoords[v + 1]);
+            if (color + 4 <= mesh.Colors.Length)
+            {
+                Colors.Add(mesh.Colors[color]);
+                Colors.Add(mesh.Colors[color + 1]);
+                Colors.Add(mesh.Colors[color + 2]);
+                Colors.Add(mesh.Colors[color + 3]);
+            }
+            else
+            {
+                Colors.Add(byte.MaxValue);
+                Colors.Add(byte.MaxValue);
+                Colors.Add(byte.MaxValue);
+                Colors.Add(byte.MaxValue);
+            }
 
-            // Tiles are placed by translation only, so a normal carries across
-            // unchanged. Models without normals fall back to facing the camera.
-            if (i + 2 < mesh.Normals.Length)
+            if (transform is { } normalMatrix)
+            {
+                var normal = i + 2 < mesh.Normals.Length
+                    ? new Vector3(mesh.Normals[i], mesh.Normals[i + 1], mesh.Normals[i + 2])
+                    : Vector3.UnitZ;
+                normal = Vector3.TransformNormal(normal, normalMatrix);
+                if (normal.LengthSquared() > 1e-12f) normal = Vector3.Normalize(normal);
+                Normals.Add(normal.X);
+                Normals.Add(normal.Y);
+                Normals.Add(normal.Z);
+            }
+            else if (i + 2 < mesh.Normals.Length)
             {
                 Normals.Add(mesh.Normals[i]);
                 Normals.Add(mesh.Normals[i + 1]);
@@ -440,7 +552,7 @@ public sealed class StageBatch
             if (y > MaxY) MaxY = y;
         }
 
-        int column = Column(offsetX);
+        int column = Column(anchorX);
         for (int t = 0; t < mesh.TriangleMaterials.Length; t++)
         {
             var key = mesh.TriangleMaterials[t];

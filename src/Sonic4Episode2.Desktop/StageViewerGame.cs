@@ -54,7 +54,8 @@ public sealed class StageViewerGame : Game
     /// degrades to the previous renderer rather than to a black screen.
     /// </remarks>
     private Effect? _stageEffect;
-    private VertexPositionNormalTexture[] _vertices = [];
+    private readonly MaterialRenderStates _materialStates = new();
+    private StageVertex[] _vertices = [];
     private readonly Dictionary<MaterialKey, int[]> _batches = [];
 
     /// <summary>
@@ -104,7 +105,7 @@ public sealed class StageViewerGame : Game
         public required DynamicVertexBuffer Vertices { get; init; }
         public required IndexBuffer Indices { get; init; }
         public required Dictionary<MaterialKey, (int Start, int Count)> Batches { get; init; }
-        public required VertexPositionNormalTexture[] Scratch { get; init; }
+        public required StageVertex[] Scratch { get; init; }
 
         /// <summary>
         /// The model's own X extent, measured from the geometry being uploaded.
@@ -140,10 +141,13 @@ public sealed class StageViewerGame : Game
     private readonly Dictionary<LoadedObject, List<(float X, float Y)>> _placementsByObject =
         new(ReferenceEqualityComparer.Instance);
     private int _objectInstances;
-    private VertexPositionNormalTexture[] _skyVertices = [];
+    private StageVertex[] _skyVertices = [];
     private readonly Dictionary<MaterialKey, int[]> _skyBatches = [];
     private float _skyCenterY;
-    private VertexPositionNormalTexture[] _ringVertices = [];
+    private readonly List<BackgroundGeometry> _pcBackground = [];
+    private sealed record BackgroundGeometry(StageVertex[] Vertices, int[] Indices,
+        (MaterialKey Material, int Start, int Count)[] Runs, bool FollowCamera);
+    private StageVertex[] _ringVertices = [];
     private readonly Dictionary<MaterialKey, int[]> _ringBatches = [];
     private int _ringsBuiltFor = -1;
     private bool _reportedCulling;
@@ -193,9 +197,12 @@ public sealed class StageViewerGame : Game
     private float _zoom = 1f;
     private bool _followPlayer;
     private bool _tabHeld;
+    private bool _restartHeld;
     private string _status = "";
     private int _shownRings = -1;
     private bool _shownRolling;
+    private int _shownLives = int.MinValue;
+    private bool _shownGameOver;
 
     /// <summary>
     /// When set, the viewer draws this many frames, writes a PNG and exits.
@@ -207,6 +214,59 @@ public sealed class StageViewerGame : Game
     /// player has landed.
     /// </remarks>
     public string? ScreenshotPath { get; set; }
+    public bool PlaybackSmoke { get; set; }
+    public bool RestartSmoke { get; set; }
+    public int PlaybackSmokeExitCode { get; private set; } = 1;
+    private bool IsSmoke => PlaybackSmoke || RestartSmoke;
+    private const int SmokeUpdates = 180;
+    private int _smokeUpdates;
+    private int _smokeDraws;
+    private bool _smokePlayerDrawn;
+    private System.Numerics.Vector3 _smokeStart;
+    private bool _smokeJumpIssued;
+    private bool _smokeRose;
+    private bool _smokeLanded;
+    private bool _smokePendingDraw;
+    private string? _smokeFailure;
+    private bool _restartSmokeCaptured;
+    private bool _restartSmokeDamageApplied;
+    private bool _restartSmokeSawDead;
+    private bool _restartSmokeRestarted;
+    private ulong _restartSmokeInitialAttempt;
+    private Player? _restartSmokeOldPlayer;
+    private object? _restartSmokeOldStage;
+    private object? _restartSmokeOldCollision;
+    private TaskControlBlock[] _restartSmokeOldTasks = [];
+    private int _restartSmokeInitialLives;
+    private int _restartSmokeObservedLives;
+    private int _restartSmokeLifeChanges;
+    private int _restartSmokeInitialRings;
+    private int _restartSmokeInitialRingFieldCount;
+    private int _restartSmokeInitialItemBoxes;
+    private int _restartSmokeInitialTaskCount;
+    private int _restartSmokeInitialObjectCount;
+    private int _restartSmokeTotalUpdates;
+    private int _restartSmokeDeathUpdates;
+    private int _restartSmokeLivesAfterRestart;
+    private int _restartSmokeTaskCountAfterRestart;
+    private int _restartSmokeObjectCountAfterRestart;
+    private bool _restartSmokeOldPlayerDestroyed;
+    private bool _restartSmokeOldTasksDeleted;
+    private bool _restartSmokeStageRetained;
+    private bool _restartSmokeCollisionRetained;
+    private bool _restartSmokeNewPlayerAlive;
+    private bool _restartSmokeRingsReset;
+    private bool _restartSmokeStateReset;
+    private bool _restartSmokeTaskCardinalityReset;
+    private bool _restartSmokeLivesConsumedOnce;
+    private bool _restartSmokeFadePositiveOpacityDrawn;
+    private bool _restartSmokeFadeSampled;
+    private bool _restartSmokeFadePassed;
+    private float _restartSmokeFadeOpacity;
+    private int _restartSmokeFadeSourcePixels;
+    private int _restartSmokeFadeMismatchPixels;
+    private long _restartSmokeFadeSourceRgbSum;
+    private long _restartSmokeFadeResultRgbSum;
 
     /// <summary>Frames to run before the screenshot is taken.</summary>
     public int ScreenshotFrame { get; set; } =
@@ -217,6 +277,8 @@ public sealed class StageViewerGame : Game
 
     /// <inheritdoc cref="GameEngine.SpawnCellY"/>
     public int? SpawnCellY { get; set; }
+
+    public IReadOnlyDictionary<string, StageSceneData>? NativeScenes { get; set; }
 
     private int _frames;
 
@@ -260,6 +322,7 @@ public sealed class StageViewerGame : Game
             ActArchive = _actArchive,
             SpawnCellX = SpawnCellX,
             SpawnCellY = SpawnCellY,
+            NativeScenes = NativeScenes,
         };
 
         // The boot scene requests its own exit on entry, so a single step lands
@@ -297,10 +360,10 @@ public sealed class StageViewerGame : Game
 
     private void BuildBuffers(StageBatch batch)
     {
-        _vertices = new VertexPositionNormalTexture[batch.VertexCount];
+        _vertices = new StageVertex[batch.VertexCount];
         for (int i = 0; i < batch.VertexCount; i++)
         {
-            _vertices[i] = new VertexPositionNormalTexture(
+            _vertices[i] = new StageVertex(
                 new Vector3(batch.Positions[i * 3],
                             batch.Positions[i * 3 + 1],
                             batch.Positions[i * 3 + 2]),
@@ -311,9 +374,8 @@ public sealed class StageViewerGame : Game
                                   batch.Normals[i * 3 + 1],
                                   batch.Normals[i * 3 + 2])
                     : Vector3.Backward,
-                // The V axis points the other way in a texture than in the
-                // model data, same flip the OBJ exporter needs.
-                new Vector2(batch.TexCoords[i * 2], 1f - batch.TexCoords[i * 2 + 1]));
+                StageVertex.ReadTextureCoordinate(batch.TexCoords, i),
+                StageVertex.ReadColor(batch.Colors, i));
         }
         foreach (var pair in batch.IndicesByMaterial)
             _batches[pair.Key] = [.. pair.Value];
@@ -401,7 +463,7 @@ public sealed class StageViewerGame : Game
         try
         {
             _vertexBuffer = new VertexBuffer(GraphicsDevice,
-                VertexPositionNormalTexture.VertexDeclaration, _vertices.Length,
+                StageVertex.VertexDeclaration, _vertices.Length,
                 BufferUsage.WriteOnly);
             _vertexBuffer.SetData(_vertices);
 
@@ -478,7 +540,7 @@ public sealed class StageViewerGame : Game
         // real light parameters are still to come.
         _effect = new BasicEffect(GraphicsDevice)
         {
-            VertexColorEnabled = false,
+            VertexColorEnabled = true,
             TextureEnabled = true,
             LightingEnabled = true,
             // The game lights per pixel, not per vertex. Its own shaders say so:
@@ -500,26 +562,28 @@ public sealed class StageViewerGame : Game
         // carry - the commonest ambient by a wide margin.
         _effect.AmbientLightColor = new Vector3(StageAmbient);
         _effect.DiffuseColor = Vector3.One;
-        // Our own compiled effect, loaded beside the executable. Missing or
-        // broken, the stage falls back to BasicEffect rather than failing.
         try
         {
-            string fx = Path.Combine(AppContext.BaseDirectory, "Content", "Stage.mgfx");
-            if (File.Exists(fx))
-                _stageEffect = new Effect(GraphicsDevice, File.ReadAllBytes(fx));
+            using var stream = TitleContainer.OpenStream("Content/Stage.mgfx");
+            using var bytes = new MemoryStream();
+            stream.CopyTo(bytes);
+            _stageEffect = new Effect(GraphicsDevice, bytes.ToArray());
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"stage effect not loaded ({ex.GetType().Name}); " +
-                              "falling back to BasicEffect");
-            _stageEffect = null;
+            throw new InvalidDataException("cannot load Content/Stage.mgfx", ex);
         }
-        Console.WriteLine(_stageEffect is null
-            ? "stage effect: BasicEffect (fallback)"
-            : "stage effect: Stage.mgfx (recovered material model)");
+        Console.WriteLine("stage effect: Stage.mgfx");
+        if (IsSmoke)
+        {
+            MaterialBlendCheck.Run(GraphicsDevice,
+                _stageEffect,
+                _effect, SetBlend);
+            MaterialStateCheck.Run(GraphicsDevice, _stageEffect, _materialStates);
+        }
 
         _white = new Texture2D(GraphicsDevice, 1, 1);
-        _white.SetData(new[] { Color.Gray });
+        _white.SetData(new[] { Color.White });
         _marker = new Texture2D(GraphicsDevice, 1, 1);
         _marker.SetData(new[] { new Color(70, 130, 255) });
         _ring = new Texture2D(GraphicsDevice, 1, 1);
@@ -547,7 +611,7 @@ public sealed class StageViewerGame : Game
     /// </remarks>
     private void DrawPlayerMarker()
     {
-        if (_engine.Player is null || !_followPlayer) return;
+        if (_engine.Player is null) return;
 
         float x = _engine.Player.Position.X;
         float y = _engine.Player.Position.Y;
@@ -557,10 +621,10 @@ public sealed class StageViewerGame : Game
 
         var corners = new[]
         {
-            new VertexPositionNormalTexture(new Vector3(x - halfWidth, y, z), Vector3.Backward, Vector2.Zero),
-            new VertexPositionNormalTexture(new Vector3(x + halfWidth, y, z), Vector3.Backward, Vector2.Zero),
-            new VertexPositionNormalTexture(new Vector3(x - halfWidth, y + height, z), Vector3.Backward, Vector2.Zero),
-            new VertexPositionNormalTexture(new Vector3(x + halfWidth, y + height, z), Vector3.Backward, Vector2.Zero),
+            new StageVertex(new Vector3(x - halfWidth, y, z), Vector3.Backward, Vector2.Zero),
+            new StageVertex(new Vector3(x + halfWidth, y, z), Vector3.Backward, Vector2.Zero),
+            new StageVertex(new Vector3(x - halfWidth, y + height, z), Vector3.Backward, Vector2.Zero),
+            new StageVertex(new Vector3(x + halfWidth, y + height, z), Vector3.Backward, Vector2.Zero),
         };
         var indices = new[] { 0, 1, 2, 2, 1, 3 };
 
@@ -662,7 +726,7 @@ public sealed class StageViewerGame : Game
     /// </remarks>
     private void DrawPlayer()
     {
-        if (_engine.Player is null || !_followPlayer) return;
+        if (_engine.Player is null) return;
         var motionName = _playerModel is null ? "" : DesiredPlayerMotion();
         bool ball = motionName == "SON_SPIN01";
         var model = ball ? _playerBallModel : _playerModel;
@@ -679,7 +743,7 @@ public sealed class StageViewerGame : Game
         }
         _playerFrame += 1f;
         float span = MathF.Max(motion.End - motion.Start, 1f);
-        float frame = motion.Start + ((_playerFrame - motion.Start) % span);
+        float frame = motion.Start + ((IsSmoke ? _smokeUpdates : _playerFrame - motion.Start) % span);
 
         var world = AnimatedPose.World(model.Nodes, motion.Channels, frame);
         var mesh = TileMesh.Skinned(model, world);
@@ -690,15 +754,16 @@ public sealed class StageViewerGame : Game
                    System.Numerics.Matrix4x4.CreateTranslation(
                        player.Position.X, player.Position.Y, 400f);
 
-        var vertices = new VertexPositionNormalTexture[mesh.Positions.Length / 3];
+        var vertices = new StageVertex[mesh.Positions.Length / 3];
         for (int i = 0; i < vertices.Length; i++)
         {
             var p = System.Numerics.Vector3.Transform(new System.Numerics.Vector3(
                 mesh.Positions[i * 3], mesh.Positions[i * 3 + 1],
                 mesh.Positions[i * 3 + 2]), pose);
-            vertices[i] = new VertexPositionNormalTexture(
+            vertices[i] = new StageVertex(
                 new Vector3(p.X, p.Y, p.Z), Vector3.Backward,
-                new Vector2(mesh.TexCoords[i * 2], 1f - mesh.TexCoords[i * 2 + 1]));
+                StageVertex.ReadTextureCoordinate(mesh.TexCoords, i),
+                StageVertex.ReadColor(mesh.Colors, i));
         }
 
         // Group triangles by material, the same shape StageBatch produces.
@@ -723,9 +788,11 @@ public sealed class StageViewerGame : Game
                 GraphicsDevice.DrawUserIndexedPrimitives(
                     PrimitiveType.TriangleList, vertices, 0, vertices.Length,
                     [.. indices], 0, indices.Count / 3);
+                if (IsSmoke && vertices.Length > 0 && indices.Count >= 3)
+                    _smokePlayerDrawn = true;
             }
         }
-        GraphicsDevice.BlendState = BlendState.AlphaBlend;
+        GraphicsDevice.BlendState = BlendState.NonPremultiplied;
     }
 
     /// <summary>
@@ -895,10 +962,11 @@ public sealed class StageViewerGame : Game
                 float x = mesh.Positions[i * 3];
                 if (x < minX) minX = x;
                 if (x > maxX) maxX = x;
-                scratch[i] = new VertexPositionNormalTexture(
+                scratch[i] = new StageVertex(
                     new Vector3(x, mesh.Positions[i * 3 + 1], mesh.Positions[i * 3 + 2]),
                     Vector3.Backward,
-                    new Vector2(mesh.TexCoords[i * 2], 1f - mesh.TexCoords[i * 2 + 1]));
+                    StageVertex.ReadTextureCoordinate(mesh.TexCoords, i),
+                    StageVertex.ReadColor(mesh.Colors, i));
             }
             geometry.MinX = count > 0 ? minX : 0f;
             geometry.MaxX = count > 0 ? maxX : 0f;
@@ -943,7 +1011,7 @@ public sealed class StageViewerGame : Game
         try
         {
             var vertices = new DynamicVertexBuffer(GraphicsDevice,
-                VertexPositionNormalTexture.VertexDeclaration, vertexCount,
+                StageVertex.VertexDeclaration, vertexCount,
                 BufferUsage.WriteOnly);
             var indexBuffer = new IndexBuffer(GraphicsDevice, IndexElementSize.ThirtyTwoBits,
                                               indices.Length, BufferUsage.WriteOnly);
@@ -954,7 +1022,7 @@ public sealed class StageViewerGame : Game
                 Vertices = vertices,
                 Indices = indexBuffer,
                 Batches = ranges,
-                Scratch = new VertexPositionNormalTexture[vertexCount],
+                Scratch = new StageVertex[vertexCount],
             };
             _objectGeometry[obj] = geometry;
             return geometry;
@@ -1058,6 +1126,11 @@ public sealed class StageViewerGame : Game
     /// </remarks>
     private void LoadBackground()
     {
+        if (NativeScenes is not null)
+        {
+            LoadPcBackground();
+            return;
+        }
         int cut = _actArchive.IndexOf('/');
         string zone = cut < 0 ? "" : _actArchive[..cut];
         // e.g. G_ZONE1 -> G_ZONE1/MAPFAR/EP2_MAPFAR_ZONE1.AMB
@@ -1126,13 +1199,14 @@ public sealed class StageViewerGame : Game
             // stage - the sky belongs above the level, not through it.
             _skyCenterY = _engine.Stage!.MaxY - (batch.MaxY - batch.MinY) * 0.25f;
 
-            _skyVertices = new VertexPositionNormalTexture[batch.VertexCount];
+            _skyVertices = new StageVertex[batch.VertexCount];
             for (int i = 0; i < _skyVertices.Length; i++)
-                _skyVertices[i] = new VertexPositionNormalTexture(
+                _skyVertices[i] = new StageVertex(
                     new Vector3(batch.Positions[i * 3], batch.Positions[i * 3 + 1],
                                 batch.Positions[i * 3 + 2]),
                     Vector3.Backward,
-                    new Vector2(batch.TexCoords[i * 2], 1f - batch.TexCoords[i * 2 + 1]));
+                    StageVertex.ReadTextureCoordinate(batch.TexCoords, i),
+                    StageVertex.ReadColor(batch.Colors, i));
             foreach (var pair in batch.IndicesByMaterial)
                 _skyBatches[pair.Key] = [.. pair.Value];
 
@@ -1141,16 +1215,103 @@ public sealed class StageViewerGame : Game
         catch (Exception ex) when (ex is AmbException or NnException) { }
     }
 
-    /// <summary>
-    /// Draws the far background, parallaxed against the camera.
-    /// </summary>
-    /// <remarks>
-    /// The background sits at a fraction of the camera's motion, the shorthand
-    /// every side-scroller uses for distance, and is pinned near the top of the
-    /// stage where the sky belongs.
-    /// </remarks>
+    private void LoadPcBackground()
+    {
+        var bytes = _content.Read(MapFarCamera.FirstActArchive);
+        MapFarCamera.ValidateFirstAct(bytes, _content.Read(MapFarCamera.SettingsArchive));
+        var outer = AmbArchive.Parse(bytes);
+        var models = outer.OpenNested(outer.Entries.Single(e =>
+            e.Name.EndsWith("_MDL.AMB", StringComparison.OrdinalIgnoreCase)));
+        var textures = outer.OpenNested(outer.Entries.Single(e =>
+            e.Name.EndsWith("_TEX.AMB", StringComparison.OrdinalIgnoreCase)));
+        foreach (var entry in textures.Entries)
+        {
+            if (!entry.Name.EndsWith(".DDS", StringComparison.OrdinalIgnoreCase)) continue;
+            string label = entry.Name.Replace('\\', '/');
+            label = label[(label.LastIndexOf('/') + 1)..].ToUpperInvariant();
+            if (_textures.ContainsKey(label)) continue;
+            var decoded = DdsTexture.Parse(textures.Read(entry).Span);
+            var texture = new Texture2D(GraphicsDevice, decoded.Width, decoded.Height);
+            texture.SetData(decoded.Pixels);
+            _textures[label] = texture;
+        }
+        foreach (int index in new[] { 0, 1, 3, 2 })
+        {
+            var model = NnModel.Load(models.Read(models.Entries[index]))
+                ?? throw new InvalidDataException("unreadable first-act background model");
+            var mesh = TileMesh.ForRigidModel(model);
+            var vertices = new StageVertex[mesh.Positions.Length / 3];
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                int at = i * 3;
+                var normal = mesh.Normals.Length == mesh.Positions.Length
+                    ? new Vector3(mesh.Normals[at], mesh.Normals[at + 1], mesh.Normals[at + 2])
+                    : Vector3.Backward;
+                vertices[i] = new StageVertex(
+                    new Vector3(mesh.Positions[at], mesh.Positions[at + 1], mesh.Positions[at + 2]),
+                    normal, StageVertex.ReadTextureCoordinate(mesh.TexCoords, i),
+                    StageVertex.ReadColor(mesh.Colors, i));
+            }
+            var runs = new List<(MaterialKey Material, int Start, int Count)>();
+            for (int start = 0; start < mesh.TriangleMaterials.Length;)
+            {
+                var material = mesh.TriangleMaterials[start];
+                int end = start + 1;
+                while (end < mesh.TriangleMaterials.Length && mesh.TriangleMaterials[end] == material) end++;
+                runs.Add((material, start * 3, (end - start) * 3));
+                start = end;
+            }
+            _pcBackground.Add(new BackgroundGeometry(vertices, mesh.Indices, [.. runs], index is 2 or 3));
+        }
+        Console.WriteLine($"PC background loaded: {_pcBackground.Sum(g => g.Vertices.Length):N0} vertices, {_pcBackground.Count} rigid models");
+    }
+
+    private void DrawPcBackground()
+    {
+        var camera = MapFarCamera.FirstActPosition(new System.Numerics.Vector2(
+            _camera.X / StageSceneData.DisplayScale, _camera.Y / StageSceneData.DisplayScale));
+        var offset = MapFarCamera.FirstActFollowOffset(camera);
+        var view = Matrix.CreateLookAt(new Vector3(camera.X, camera.Y, camera.Z),
+                                      new Vector3(camera.X, camera.Y, 0), Vector3.Up);
+        var projection = Matrix.CreatePerspectiveFieldOfView(MapFarCamera.FirstActFieldOfView,
+            GraphicsDevice.Viewport.Width / (float)GraphicsDevice.Viewport.Height,
+            MapFarCamera.NearPlane, MapFarCamera.FarPlane);
+        var effect = _stageEffect!;
+        effect.CurrentTechnique = effect.Techniques["StageTechnique"];
+        effect.Parameters["MaterialAmbient"].SetValue(new Vector3(StageAmbient));
+        effect.Parameters["LightDirection"].SetValue(_effect.DirectionalLight0.Direction);
+        effect.Parameters["LightDiffuse"].SetValue(_effect.DirectionalLight0.DiffuseColor);
+        foreach (var geometry in _pcBackground)
+        {
+            var world = geometry.FollowCamera
+                ? Matrix.CreateTranslation(offset.X, offset.Y, offset.Z) : Matrix.Identity;
+            effect.Parameters["WorldViewProjection"].SetValue(world * view * projection);
+            foreach (var run in geometry.Runs)
+            {
+                _materialStates.Apply(GraphicsDevice, run.Material);
+                MaterialRenderStates.ConfigureEffect(effect, run.Material);
+                foreach (var pass in effect.CurrentTechnique.Passes)
+                {
+                    pass.Apply();
+                    GraphicsDevice.Textures[0] = TextureNamed(run.Material.Base);
+                    GraphicsDevice.SamplerStates[0] = SamplerState.LinearWrap;
+                    GraphicsDevice.DrawUserIndexedPrimitives(PrimitiveType.TriangleList,
+                        geometry.Vertices, 0, geometry.Vertices.Length,
+                        geometry.Indices, run.Start, run.Count / 3);
+                }
+            }
+        }
+        // The stage uses a separate projection, so its depth values cannot share this pass.
+        GraphicsDevice.Clear(ClearOptions.DepthBuffer, Color.Transparent, 1f, 0);
+    }
+
     private void DrawBackground()
     {
+        if (_pcBackground.Count > 0)
+        {
+            DrawPcBackground();
+            return;
+        }
         if (_skyVertices.Length == 0) return;
 
         // Camera-locked with parallax: the background follows the camera but drifts
@@ -1158,43 +1319,36 @@ public sealed class StageViewerGame : Game
         // view; the vertical anchor keeps the sky above the level.
         float px = _camera.X * 0.85f;
         float py = _skyCenterY + _camera.Y * 0.15f;
-        _effect.World = Matrix.CreateTranslation(px, py, 0f);
+        var effect = _stageEffect!;
+        effect.CurrentTechnique = effect.Techniques["StageTechnique"];
+        effect.Parameters["WorldViewProjection"].SetValue(
+            Matrix.CreateTranslation(px, py, 0f) * _effect.View * _effect.Projection);
+        effect.Parameters["MaterialAmbient"].SetValue(new Vector3(StageAmbient));
+        effect.Parameters["LightDirection"].SetValue(_effect.DirectionalLight0.Direction);
+        effect.Parameters["LightDiffuse"].SetValue(_effect.DirectionalLight0.DiffuseColor);
 
         foreach (var pair in _skyBatches)
         {
-            SetBlend(pair.Key);
-            _effect.Texture = TextureNamed(pair.Key.Base);
-            foreach (var pass in _effect.CurrentTechnique.Passes)
+            _materialStates.Apply(GraphicsDevice, pair.Key);
+            MaterialRenderStates.ConfigureEffect(effect, pair.Key);
+            foreach (var pass in effect.CurrentTechnique.Passes)
             {
                 pass.Apply();
+                GraphicsDevice.Textures[0] = TextureNamed(pair.Key.Base);
                 GraphicsDevice.DrawUserIndexedPrimitives(
                     PrimitiveType.TriangleList, _skyVertices, 0, _skyVertices.Length,
                     pair.Value, 0, pair.Value.Length / 3);
             }
         }
-        _effect.World = Matrix.Identity;
     }
 
     /// <summary>
     /// Sets the blend state for a batch key — additive for glow materials,
     /// ordinary transparency otherwise.
     /// </summary>
-    /// <remarks>
-    /// Additive is <c>SRCALPHA / ONE</c>, which is what the material's own render
-    /// state asks for. It is not MonoGame's <c>BlendState.Additive</c>, which is
-    /// <c>ONE / ONE</c> and blows out anything not pre-multiplied.
-    /// </remarks>
-    private static readonly BlendState AdditiveSrcAlpha = new()
-    {
-        ColorSourceBlend = Blend.SourceAlpha,
-        ColorDestinationBlend = Blend.One,
-        AlphaSourceBlend = Blend.SourceAlpha,
-        AlphaDestinationBlend = Blend.One,
-    };
-
     private void SetBlend(MaterialKey key) =>
         GraphicsDevice.BlendState = key.IsAdditive
-            ? AdditiveSrcAlpha : BlendState.AlphaBlend;
+            ? BlendState.Additive : BlendState.NonPremultiplied;
 
     /// <summary>
     /// The uploaded texture of that name, or a white pixel when it is missing.
@@ -1314,15 +1468,16 @@ public sealed class StageViewerGame : Game
             batch.Add(_ringMesh, at.X, at.Y, 390f);
         }
 
-        _ringVertices = new VertexPositionNormalTexture[batch.VertexCount];
+        _ringVertices = new StageVertex[batch.VertexCount];
         for (int i = 0; i < _ringVertices.Length; i++)
         {
-            _ringVertices[i] = new VertexPositionNormalTexture(
+            _ringVertices[i] = new StageVertex(
                 new Vector3(batch.Positions[i * 3],
                             batch.Positions[i * 3 + 1],
                             batch.Positions[i * 3 + 2]),
                 Vector3.Backward,
-                new Vector2(batch.TexCoords[i * 2], batch.TexCoords[i * 2 + 1]));
+                StageVertex.ReadTextureCoordinate(batch.TexCoords, i),
+                StageVertex.ReadColor(batch.Colors, i));
         }
         foreach (var pair in batch.IndicesByMaterial)
             _ringBatches[pair.Key] = [.. pair.Value];
@@ -1348,6 +1503,7 @@ public sealed class StageViewerGame : Game
 
             foreach (var pair in _ringBatches)
             {
+                SetBlend(pair.Key);
                 _effect.Texture = _textures.TryGetValue(
                     (pair.Key.Base ?? "").ToUpperInvariant(), out var texture)
                     ? texture
@@ -1367,7 +1523,7 @@ public sealed class StageViewerGame : Game
         float half = RingField.RingPixels / 2f * PlayerPhysics.WorldPerPixel;
         const float z = 390f;   // just behind the player marker
 
-        var corners = new VertexPositionNormalTexture[field.Remaining * 4];
+        var corners = new StageVertex[field.Remaining * 4];
         var indices = new int[field.Remaining * 6];
         int quad = 0;
 
@@ -1376,13 +1532,13 @@ public sealed class StageViewerGame : Game
             if (field.IsTaken(i)) continue;
             var at = field.WorldPosition(i);
             int v = quad * 4;
-            corners[v + 0] = new VertexPositionNormalTexture(
+            corners[v + 0] = new StageVertex(
                 new Vector3(at.X - half, at.Y - half, z), Vector3.Backward, Vector2.Zero);
-            corners[v + 1] = new VertexPositionNormalTexture(
+            corners[v + 1] = new StageVertex(
                 new Vector3(at.X + half, at.Y - half, z), Vector3.Backward, Vector2.Zero);
-            corners[v + 2] = new VertexPositionNormalTexture(
+            corners[v + 2] = new StageVertex(
                 new Vector3(at.X - half, at.Y + half, z), Vector3.Backward, Vector2.Zero);
-            corners[v + 3] = new VertexPositionNormalTexture(
+            corners[v + 3] = new StageVertex(
                 new Vector3(at.X + half, at.Y + half, z), Vector3.Backward, Vector2.Zero);
 
             int t = quad * 6;
@@ -1392,12 +1548,137 @@ public sealed class StageViewerGame : Game
         }
 
         _effect.Texture = _ring;
+        GraphicsDevice.BlendState = BlendState.NonPremultiplied;
         foreach (var pass in _effect.CurrentTechnique.Passes)
         {
             pass.Apply();
             GraphicsDevice.DrawUserIndexedPrimitives(
                 PrimitiveType.TriangleList, corners, 0, quad * 4, indices, 0, quad * 2);
         }
+    }
+
+    private void DrawRestartFade()
+    {
+        float opacity = _engine.RestartFadeOpacity;
+        if (opacity <= 0f) return;
+
+        float halfWidth = GraphicsDevice.Viewport.Width / 2f / _zoom;
+        float halfHeight = GraphicsDevice.Viewport.Height / 2f / _zoom;
+        byte alpha = (byte)Math.Clamp((int)MathF.Round(opacity * byte.MaxValue), 0, byte.MaxValue);
+        var vertices = new[]
+        {
+            new VertexPositionColor(new Vector3(_camera.X - halfWidth, _camera.Y - halfHeight, 1000f),
+                                    new Color((byte)0, (byte)0, (byte)0, alpha)),
+            new VertexPositionColor(new Vector3(_camera.X + halfWidth, _camera.Y - halfHeight, 1000f),
+                                    new Color((byte)0, (byte)0, (byte)0, alpha)),
+            new VertexPositionColor(new Vector3(_camera.X - halfWidth, _camera.Y + halfHeight, 1000f),
+                                    new Color((byte)0, (byte)0, (byte)0, alpha)),
+            new VertexPositionColor(new Vector3(_camera.X + halfWidth, _camera.Y + halfHeight, 1000f),
+                                    new Color((byte)0, (byte)0, (byte)0, alpha)),
+        };
+        var textureEnabled = _effect.TextureEnabled;
+        var vertexColorEnabled = _effect.VertexColorEnabled;
+        var lightingEnabled = _effect.LightingEnabled;
+        float effectAlpha = _effect.Alpha;
+        var depthStencil = GraphicsDevice.DepthStencilState;
+        var blend = GraphicsDevice.BlendState;
+        Color[]? before = null;
+        if (RestartSmoke && !_restartSmokeFadeSampled && opacity >= 0.5f)
+        {
+            _restartSmokeFadeOpacity = opacity;
+            try
+            {
+                before = new Color[GraphicsDevice.PresentationParameters.BackBufferWidth *
+                                   GraphicsDevice.PresentationParameters.BackBufferHeight];
+                GraphicsDevice.GetBackBufferData(before);
+            }
+            catch (Exception error)
+            {
+                _restartSmokeFadeSampled = true;
+                _smokeFailure ??= $"restart fade pre-overlay readback failed ({error.GetType().Name})";
+            }
+        }
+        try
+        {
+            _effect.TextureEnabled = false;
+            _effect.VertexColorEnabled = true;
+            _effect.LightingEnabled = false;
+            _effect.Alpha = 1f;
+            GraphicsDevice.DepthStencilState = DepthStencilState.None;
+            GraphicsDevice.BlendState = BlendState.AlphaBlend;
+            foreach (var pass in _effect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                GraphicsDevice.DrawUserIndexedPrimitives(
+                    PrimitiveType.TriangleList, vertices, 0, vertices.Length,
+                    new[] { 0, 1, 2, 2, 1, 3 }, 0, 2);
+                if (RestartSmoke) _restartSmokeFadePositiveOpacityDrawn = true;
+            }
+            if (before is not null) VerifyRestartSmokeFade(before, alpha, opacity);
+        }
+        finally
+        {
+            _effect.TextureEnabled = textureEnabled;
+            _effect.VertexColorEnabled = vertexColorEnabled;
+            _effect.LightingEnabled = lightingEnabled;
+            _effect.Alpha = effectAlpha;
+            GraphicsDevice.DepthStencilState = depthStencil;
+            GraphicsDevice.BlendState = blend;
+        }
+    }
+
+    private void VerifyRestartSmokeFade(Color[] before, byte alpha, float opacity)
+    {
+        _restartSmokeFadeSampled = true;
+        _restartSmokeFadeOpacity = opacity;
+        var after = new Color[before.Length];
+        try
+        {
+            GraphicsDevice.GetBackBufferData(after);
+        }
+        catch (Exception error)
+        {
+            _smokeFailure ??= $"restart fade post-overlay readback failed ({error.GetType().Name})";
+            return;
+        }
+
+        long sourceRgbSum = 0;
+        long resultRgbSum = 0;
+        int sourcePixels = 0;
+        int mismatchedPixels = 0;
+        for (int i = 0; i < before.Length; i++)
+        {
+            var source = before[i];
+            var result = after[i];
+            int sourceRgb = source.R + source.G + source.B;
+            sourceRgbSum += sourceRgb;
+            resultRgbSum += result.R + result.G + result.B;
+            if (sourceRgb != 0) sourcePixels++;
+            if (!FadeChannelMatches(source.R, result.R, alpha) ||
+                !FadeChannelMatches(source.G, result.G, alpha) ||
+                !FadeChannelMatches(source.B, result.B, alpha))
+                mismatchedPixels++;
+        }
+
+        _restartSmokeFadeSourcePixels = sourcePixels;
+        _restartSmokeFadeMismatchPixels = mismatchedPixels;
+        _restartSmokeFadeSourceRgbSum = sourceRgbSum;
+        _restartSmokeFadeResultRgbSum = resultRgbSum;
+        _restartSmokeFadePassed = sourcePixels > 0 && resultRgbSum < sourceRgbSum &&
+                                  mismatchedPixels == 0;
+        if (_restartSmokeFadePassed) return;
+        if (sourcePixels == 0)
+            _smokeFailure ??= "restart fade verification found no nonblack pre-overlay pixels";
+        else if (resultRgbSum >= sourceRgbSum)
+            _smokeFailure ??= "restart fade verification did not reduce RGB sum";
+        else
+            _smokeFailure ??= $"restart fade verification found {mismatchedPixels} mismatched pixels";
+    }
+
+    private static bool FadeChannelMatches(byte source, byte result, byte alpha)
+    {
+        int expected = (source * (byte.MaxValue - alpha) + byte.MaxValue / 2) / byte.MaxValue;
+        return Math.Abs(result - expected) <= 2;
     }
 
     /// <summary>Writes what is currently on screen to a PNG.</summary>
@@ -1415,31 +1696,77 @@ public sealed class StageViewerGame : Game
         Console.WriteLine($"screenshot {path} ({w}x{h})");
     }
 
+    private void UpdateWindowTitle()
+    {
+        bool rolling = _engine.Player?.Rolling ?? false;
+        int lives = Math.Max(0, _engine.Lives);
+        bool gameOver = _engine.GameOver;
+        _status = _engine.Status;
+        if (_engine.RingCount == _shownRings && rolling == _shownRolling &&
+            lives == _shownLives && gameOver == _shownGameOver)
+            return;
+
+        _shownRings = _engine.RingCount;
+        _shownRolling = rolling;
+        _shownLives = lives;
+        _shownGameOver = gameOver;
+        Window.Title = $"Sonic 4 Episode II - rings {_shownRings}" +
+                       (_engine.RingField is null ? "" : $" of {_engine.RingField.Count}") +
+                       $" - lives {_shownLives}" +
+                       (rolling ? " - rolling" : "") +
+                       (gameOver ? " - GAME OVER - R: new run" : " - R: restart");
+    }
+
+    private void ResetAttemptPresentation()
+    {
+        if (_engine.Player is { } player)
+            _camera = new Vector2(player.Position.X, player.Position.Y + 40f);
+        _followPlayer = true;
+        _zoom = 1.6f;
+        _playerMotionName = "";
+        _playerFrame = 0f;
+        _ringsBuiltFor = -1;
+        _itemBoxesRemaining = -1;
+        _status = _engine.Status;
+        _shownRings = -1;
+        _shownRolling = !(_engine.Player?.Rolling ?? false);
+        _shownLives = int.MinValue;
+        _shownGameOver = !_engine.GameOver;
+    }
+
     protected override void Update(GameTime gameTime)
     {
+        if (IsSmoke && _smokePendingDraw) return;
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        bool rolling = _engine.Player?.Rolling ?? false;
-        if (_engine.RingCount != _shownRings || rolling != _shownRolling)
-        {
-            _shownRings = _engine.RingCount;
-            _shownRolling = rolling;
-            Window.Title = $"Sonic 4 Episode II - rings {_shownRings}" +
-                           (_engine.RingField is null
-                               ? "" : $" of {_engine.RingField.Count}") +
-                           (rolling ? " - rolling" : "");
-        }
+        UpdateWindowTitle();
 
-        var keyboard = Keyboard.GetState();
+        var keyboard = IsSmoke ? new KeyboardState() : Keyboard.GetState();
         if (keyboard.IsKeyDown(Keys.Escape)) Exit();
 
         if (keyboard.IsKeyDown(Keys.Tab) && !_tabHeld) _followPlayer = !_followPlayer;
         _tabHeld = keyboard.IsKeyDown(Keys.Tab);
+        bool restartPressed = keyboard.IsKeyDown(Keys.R);
+        if (restartPressed && !_restartHeld) _engine.RequestRestart();
+        _restartHeld = restartPressed;
 
         // Input is handed to the player before the engine steps, so the player
         // acts on this frame's input rather than last frame's.
-        if (_engine.Player is not null && _followPlayer)
+        if (IsSmoke)
         {
-            if (_input is not null)
+            bool ready = RestartSmoke && !_restartSmokeRestarted
+                ? PrepareRestartSmokeStep()
+                : PrepareSmokeStep();
+            if (!ready) return;
+        }
+        else if (_engine.Player is not null)
+        {
+            if (!_followPlayer)
+            {
+                _engine.Player.InputX = 0;
+                _engine.Player.InputJump = false;
+                _engine.Player.InputDown = false;
+            }
+            else if (_input is not null)
             {
                 _input.Apply(_engine.Player,
                              GraphicsDevice.Viewport.Width,
@@ -1461,7 +1788,13 @@ public sealed class StageViewerGame : Game
             }
         }
 
+        ulong attempt = _engine.StageAttempt;
         _engine.Step();
+        bool attemptChanged = _engine.StageAttempt != attempt;
+        if (attemptChanged) ResetAttemptPresentation();
+        if (RestartSmoke && !_restartSmokeRestarted) ObserveRestartSmokeStep(attemptChanged);
+        else if (IsSmoke) ObserveSmokeStep();
+        UpdateWindowTitle();
 
         float delta = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
@@ -1492,8 +1825,17 @@ public sealed class StageViewerGame : Game
     protected override void Draw(GameTime gameTime)
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        GraphicsDevice.Clear(new Color(16, 18, 24));
-        if (_vertices.Length == 0) return;
+        GraphicsDevice.Clear(NativeScenes is null ? new Color(16, 18, 24) : new Color(68, 102, 255));
+        if (_vertices.Length == 0)
+        {
+            if (IsSmoke)
+            {
+                _smokeFailure = "empty stage geometry";
+                CompleteSmoke();
+            }
+            else if (ScreenshotPath is not null) Exit();
+            return;
+        }
 
         // Posed object geometry is presentation, not simulation, so it belongs
         // here rather than in Update. That is not just tidiness: rebuilding it
@@ -1506,7 +1848,7 @@ public sealed class StageViewerGame : Game
         // the same command sample different animation phases, which silently
         // spoils any pixel diff taken between them — that cost me one wrong
         // conclusion about culling before I noticed.
-        float animationFrame = ScreenshotPath is not null
+        float animationFrame = IsSmoke ? _smokeUpdates * 0.5f : ScreenshotPath is not null
             ? _frames * 0.5f
             : (float)gameTime.TotalGameTime.TotalSeconds * 30f;
 
@@ -1532,11 +1874,12 @@ public sealed class StageViewerGame : Game
         // Foliage, railings and window tracery are cut-out textures. Without
         // blending their transparent pixels draw as black silhouettes, which is
         // what the stage looked like before this line.
-        GraphicsDevice.BlendState = BlendState.AlphaBlend;
+        GraphicsDevice.BlendState = BlendState.NonPremultiplied;
 
         // The far background first, deep enough that everything draws over it.
         _phaseMark = System.Diagnostics.Stopwatch.GetTimestamp();
         DrawBackground();
+        GraphicsDevice.DepthStencilState = DepthStencilState.Default;
         Phase("sky");
 
         // One draw per material. The chunking below only applies to the fallback
@@ -1638,9 +1981,8 @@ public sealed class StageViewerGame : Game
                     foreach (var t in _stageEffect.Techniques)
                         if (t.Name == wanted) { _stageEffect.CurrentTechnique = t; break; }
 
-                var d = pair.Key.Diffuse;
-                _stageEffect.Parameters["MaterialDiffuse"]?
-                    .SetValue(new Vector4(d.R, d.G, d.B, d.A));
+                _materialStates.Apply(GraphicsDevice, pair.Key);
+                MaterialRenderStates.ConfigureEffect(_stageEffect, pair.Key);
                 if (wantsEnvironment) environment = TextureNamed(pair.Key.Environment);
             }
             else
@@ -1711,6 +2053,7 @@ public sealed class StageViewerGame : Game
         }
 
         Phase("stage");
+        GraphicsDevice.DepthStencilState = DepthStencilState.Default;
         DrawObjects(cull ? _camera.X - halfWidth : float.NegativeInfinity,
                     cull ? _camera.X + halfWidth : float.PositiveInfinity);
         Phase("objects");
@@ -1718,18 +2061,305 @@ public sealed class StageViewerGame : Game
         Phase("rings");
         DrawPlayer();
         Phase("player");
+        DrawRestartFade();
         base.Draw(gameTime);
         Phase("present");
 
         clock.Stop();
         _frameTimes.Add(clock.Elapsed.TotalMilliseconds);
 
-        if (ScreenshotPath is not null && ++_frames >= ScreenshotFrame)
+        if (IsSmoke)
+        {
+            _smokeDraws++;
+            if (_smokePendingDraw) CompleteSmoke();
+        }
+        else if (ScreenshotPath is not null && ++_frames >= ScreenshotFrame)
         {
             ReportFrameTimes();
             SaveScreenshot(ScreenshotPath);
             Exit();
         }
+    }
+
+    private bool PrepareSmokeRequirements()
+    {
+        bool motions = new[] { "SON_FWWAIT0_01", "SON_WALK", "SON_RUN", "SON_SPIN01" }
+            .All(name => _playerMotions.TryGetValue(name, out var motion) && motion.Channels.Count > 0 &&
+                         float.IsFinite(motion.Start) && float.IsFinite(motion.End) && motion.End > motion.Start);
+        if (_engine.Player is null || _engine.Collision?.HasShapes != true ||
+            _vertices.Length == 0 || !_batches.Values.Any(indices => indices.Length >= 3) ||
+            _playerModel is null || _playerBallModel is null || !motions)
+        {
+            _smokeFailure ??= "missing stage, collision, player model or motion";
+            _smokePendingDraw = true;
+            return false;
+        }
+        return true;
+    }
+
+    private bool PrepareSmokeStep()
+    {
+        if (!PrepareSmokeRequirements()) return false;
+
+        var player = _engine.Player!;
+        if (_smokeUpdates == 0) _smokeStart = player.Position;
+        player.InputX = _smokeUpdates is >= 30 and < 150 ? 1 : 0;
+        player.InputDown = false;
+        player.InputJump = !_smokeJumpIssued && _smokeUpdates >= 60 && player.OnGround;
+        _smokeJumpIssued |= player.InputJump;
+        return true;
+    }
+
+    private bool PrepareRestartSmokeStep()
+    {
+        if (!PrepareSmokeRequirements()) return false;
+        if (!_restartSmokeCaptured) CaptureRestartSmoke();
+
+        if (!_restartSmokeDamageApplied)
+        {
+            if (_restartSmokeInitialRings != 0)
+            {
+                _smokeFailure ??= "restart smoke requires zero initial rings";
+                _smokePendingDraw = true;
+                return false;
+            }
+
+            _restartSmokeDamageApplied = true;
+            var damage = _engine.DamagePlayer();
+            if (damage.Outcome != DamageOutcome.Death || _engine.Player?.IsDead != true)
+            {
+                _smokeFailure ??= "damage did not enter death";
+                _smokePendingDraw = true;
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void CaptureRestartSmoke()
+    {
+        _restartSmokeCaptured = true;
+        _restartSmokeInitialAttempt = _engine.StageAttempt;
+        _restartSmokeOldPlayer = _engine.Player;
+        _restartSmokeOldStage = _engine.Stage;
+        _restartSmokeOldCollision = _engine.Collision;
+        _restartSmokeOldTasks = _engine.Scheduler.Tasks.ToArray();
+        _restartSmokeInitialLives = _engine.Lives;
+        _restartSmokeObservedLives = _engine.Lives;
+        _restartSmokeInitialRings = _engine.RingCount;
+        _restartSmokeInitialRingFieldCount = _engine.RingField?.Count ?? -1;
+        _restartSmokeInitialItemBoxes = _engine.ItemBoxes?.Remaining ?? -1;
+        _restartSmokeInitialTaskCount = _engine.Scheduler.Count;
+        _restartSmokeInitialObjectCount = _engine.Objects.Count;
+    }
+
+    private void ObserveRestartSmokeStep(bool attemptChanged)
+    {
+        _restartSmokeTotalUpdates++;
+        _restartSmokeDeathUpdates++;
+        var player = _engine.Player;
+        if (player is null)
+            _smokeFailure ??= "missing player during restart";
+        else
+        {
+            var p = player.Position;
+            var v = player.Velocity;
+            if (!float.IsFinite(p.X) || !float.IsFinite(p.Y) || !float.IsFinite(p.Z) ||
+                !float.IsFinite(v.X) || !float.IsFinite(v.Y))
+                _smokeFailure ??= "nonfinite player during restart";
+        }
+        if (!float.IsFinite(_engine.DeathWaitTime) || !float.IsFinite(_engine.RestartFadeOpacity))
+            _smokeFailure ??= "nonfinite restart timer";
+        _restartSmokeSawDead |= _restartSmokeOldPlayer?.IsDead == true;
+        if (_engine.Lives != _restartSmokeObservedLives)
+        {
+            _restartSmokeLifeChanges++;
+            _restartSmokeObservedLives = _engine.Lives;
+        }
+
+        if (attemptChanged)
+        {
+            VerifyRestartSmoke();
+            if (_smokeFailure is null) ResetRestartMovementSmoke();
+            else _smokePendingDraw = true;
+            return;
+        }
+
+        if (_smokeFailure is not null || _restartSmokeDeathUpdates >= SmokeUpdates)
+        {
+            _smokeFailure ??= "restart did not occur within 180 updates";
+            _smokePendingDraw = true;
+        }
+    }
+
+    private void VerifyRestartSmoke()
+    {
+        _restartSmokeLivesAfterRestart = _engine.Lives;
+        _restartSmokeTaskCountAfterRestart = _engine.Scheduler.Count;
+        _restartSmokeObjectCountAfterRestart = _engine.Objects.Count;
+        _restartSmokeOldPlayerDestroyed = _restartSmokeOldPlayer?.Destroyed == true;
+        _restartSmokeOldTasksDeleted = _restartSmokeOldTasks.All(task => task.Deleted);
+        _restartSmokeStageRetained = ReferenceEquals(_restartSmokeOldStage, _engine.Stage);
+        _restartSmokeCollisionRetained = ReferenceEquals(_restartSmokeOldCollision, _engine.Collision);
+        _restartSmokeNewPlayerAlive = _engine.Player is { } player &&
+                                      !ReferenceEquals(_restartSmokeOldPlayer, player) &&
+                                      !player.IsDead && !player.Destroyed;
+        _restartSmokeRingsReset = _engine.RingCount == 0 &&
+                                  _engine.RingField is { Collected: 0 } rings &&
+                                  rings.Count == _restartSmokeInitialRingFieldCount &&
+                                  _engine.ItemBoxes?.Remaining == _restartSmokeInitialItemBoxes;
+        _restartSmokeStateReset = !_engine.GameOver && _engine.DeathWaitTime == 0f &&
+                                  _engine.RestartFadeOpacity == 0f && !_engine.ActClear &&
+                                  _engine.StageFrame == 1;
+        _restartSmokeTaskCardinalityReset = _restartSmokeTaskCountAfterRestart == _restartSmokeInitialTaskCount &&
+                                            _restartSmokeObjectCountAfterRestart == _restartSmokeInitialObjectCount;
+        _restartSmokeLivesConsumedOnce = _restartSmokeLivesAfterRestart == _restartSmokeInitialLives - 1 &&
+                                         _restartSmokeLifeChanges == 1;
+        _restartSmokeRestarted = _engine.StageAttempt == _restartSmokeInitialAttempt + 1 &&
+                                 _restartSmokeDamageApplied && _restartSmokeSawDead &&
+                                 _restartSmokeOldPlayerDestroyed && _restartSmokeOldTasksDeleted &&
+                                 _restartSmokeStageRetained && _restartSmokeCollisionRetained &&
+                                 _restartSmokeNewPlayerAlive && _restartSmokeRingsReset &&
+                                 _restartSmokeStateReset && _restartSmokeTaskCardinalityReset &&
+                                 _restartSmokeLivesConsumedOnce;
+        if (!_restartSmokeRestarted)
+            _smokeFailure ??= "restart invariants failed";
+    }
+
+    private void ResetRestartMovementSmoke()
+    {
+        _smokeUpdates = 0;
+        _smokeDraws = 0;
+        _smokePlayerDrawn = false;
+        _smokeStart = default;
+        _smokeJumpIssued = false;
+        _smokeRose = false;
+        _smokeLanded = false;
+        _smokePendingDraw = false;
+    }
+
+    private void ObserveSmokeStep()
+    {
+        if (RestartSmoke) _restartSmokeTotalUpdates++;
+        var player = _engine.Player;
+        if (player is null)
+        {
+            _smokeFailure ??= "missing player";
+            _smokePendingDraw = true;
+            return;
+        }
+
+        _smokeUpdates++;
+        var p = player.Position;
+        var v = player.Velocity;
+        if (!float.IsFinite(p.X) || !float.IsFinite(p.Y) || !float.IsFinite(p.Z) ||
+            !float.IsFinite(v.X) || !float.IsFinite(v.Y) || player.IsDead)
+            _smokeFailure ??= "nonfinite or dead player";
+        _smokeRose |= _smokeJumpIssued && !player.OnGround && v.Y > 0;
+        _smokeLanded |= _smokeRose && player.OnGround;
+        if (_smokeUpdates >= SmokeUpdates || _smokeFailure is not null)
+        {
+            if (_smokeFailure is null &&
+                (p.X - _smokeStart.X <= PlayerPhysics.WorldPerPixel || !_smokeRose || !_smokeLanded))
+                _smokeFailure = "movement, jump or landing was not observed";
+            player.InputX = 0;
+            player.InputJump = false;
+            player.InputDown = false;
+            _smokePendingDraw = true;
+        }
+    }
+
+    private void CompleteSmoke()
+    {
+        var end = _engine.Player?.Position ?? _smokeStart;
+        if (!_smokePlayerDrawn) _smokeFailure ??= "player geometry was not drawn";
+        bool fadePassed = !RestartSmoke || CompleteRestartSmokeFadeVerification();
+        bool movementPassed = _smokeFailure is null && _smokeUpdates == SmokeUpdates && _smokeDraws > 0;
+        if (ScreenshotPath is not null) SaveScreenshot(ScreenshotPath);
+        var options = new System.Text.Json.JsonSerializerOptions
+        {
+            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals
+        };
+        if (RestartSmoke)
+        {
+            bool restartPassed = _restartSmokeRestarted && _restartSmokeDamageApplied &&
+                                 _restartSmokeSawDead && _restartSmokeOldPlayerDestroyed &&
+                                 _restartSmokeOldTasksDeleted && _restartSmokeStageRetained &&
+                                 _restartSmokeCollisionRetained && _restartSmokeNewPlayerAlive &&
+                                 _restartSmokeRingsReset && _restartSmokeStateReset &&
+                                 _restartSmokeTaskCardinalityReset && _restartSmokeLivesConsumedOnce &&
+                                 fadePassed;
+            bool passed = movementPassed && restartPassed;
+            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
+            {
+                type = "restart_smoke", passed, updates = _smokeUpdates, renderedFrames = _smokeDraws,
+                startX = _smokeStart.X, startY = _smokeStart.Y, endX = end.X, endY = end.Y,
+                deltaX = end.X - _smokeStart.X, jumpIssued = _smokeJumpIssued,
+                rose = _smokeRose, landed = _smokeLanded, playerDrawn = _smokePlayerDrawn,
+                totalUpdates = _restartSmokeTotalUpdates, deathUpdates = _restartSmokeDeathUpdates,
+                attemptStart = _restartSmokeInitialAttempt, attemptEnd = _engine.StageAttempt,
+                damageApplied = _restartSmokeDamageApplied, sawDead = _restartSmokeSawDead,
+                oldPlayerDestroyed = _restartSmokeOldPlayerDestroyed,
+                oldTasksDeleted = _restartSmokeOldTasksDeleted,
+                stageRetained = _restartSmokeStageRetained,
+                collisionRetained = _restartSmokeCollisionRetained,
+                initialLives = _restartSmokeInitialLives,
+                livesAfterRestart = _restartSmokeLivesAfterRestart,
+                lifeChanges = _restartSmokeLifeChanges,
+                livesConsumedOnce = _restartSmokeLivesConsumedOnce,
+                initialRings = _restartSmokeInitialRings,
+                ringsReset = _restartSmokeRingsReset,
+                stateReset = _restartSmokeStateReset,
+                tasksBeforeRestart = _restartSmokeInitialTaskCount,
+                tasksAfterRestart = _restartSmokeTaskCountAfterRestart,
+                objectsBeforeRestart = _restartSmokeInitialObjectCount,
+                objectsAfterRestart = _restartSmokeObjectCountAfterRestart,
+                taskCardinalityReset = _restartSmokeTaskCardinalityReset,
+                fadePositiveOpacityDrawn = _restartSmokeFadePositiveOpacityDrawn,
+                fadeSampled = _restartSmokeFadeSampled,
+                fadePassed = _restartSmokeFadePassed,
+                fadeSampleOpacity = _restartSmokeFadeOpacity,
+                fadeSourcePixels = _restartSmokeFadeSourcePixels,
+                fadeMismatchedPixels = _restartSmokeFadeMismatchPixels,
+                fadeSourceRgbSum = _restartSmokeFadeSourceRgbSum,
+                fadeResultRgbSum = _restartSmokeFadeResultRgbSum,
+                newPlayerAlive = _restartSmokeNewPlayerAlive, failure = _smokeFailure
+            }, options));
+            PlaybackSmokeExitCode = passed ? 0 : 1;
+        }
+        else
+        {
+            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
+            {
+                type = "playback_smoke", passed = movementPassed, updates = _smokeUpdates,
+                renderedFrames = _smokeDraws, startX = _smokeStart.X, startY = _smokeStart.Y,
+                endX = end.X, endY = end.Y, deltaX = end.X - _smokeStart.X,
+                jumpIssued = _smokeJumpIssued, rose = _smokeRose, landed = _smokeLanded,
+                playerDrawn = _smokePlayerDrawn, failure = _smokeFailure
+            }, options));
+            PlaybackSmokeExitCode = movementPassed ? 0 : 1;
+        }
+        Exit();
+    }
+
+    private bool CompleteRestartSmokeFadeVerification()
+    {
+        if (!_restartSmokeFadePositiveOpacityDrawn)
+        {
+            _smokeFailure ??= "restart fade never submitted a positive-opacity overlay";
+            return false;
+        }
+        if (!_restartSmokeFadeSampled)
+        {
+            _smokeFailure ??= "restart fade verification never sampled opacity >= 0.5";
+            return false;
+        }
+        if (!_restartSmokeFadePassed)
+        {
+            _smokeFailure ??= "restart fade verification failed";
+            return false;
+        }
+        return true;
     }
 
     /// <summary>
@@ -1740,6 +2370,12 @@ public sealed class StageViewerGame : Game
     /// they are dropped. The minimum is the headline because contention can only
     /// push a sample up.
     /// </remarks>
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _materialStates.Dispose();
+        base.Dispose(disposing);
+    }
+
     private void ReportFrameTimes()
     {
         var samples = _frameTimes.Skip(Math.Min(3, _frameTimes.Count - 1))

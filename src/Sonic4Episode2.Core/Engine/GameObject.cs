@@ -172,6 +172,7 @@ public sealed class ObjectManager
     private readonly List<GameObject> _objects = [];
     private readonly List<GameObject> _pending = [];
     private bool _running;
+    private bool _clearing;
 
     public IReadOnlyList<GameObject> Objects => _objects;
     public int Count => _objects.Count;
@@ -184,9 +185,48 @@ public sealed class ObjectManager
 
     public T Add<T>(T instance) where T : GameObject
     {
+        if (_clearing)
+        {
+            instance.Destroy();
+            return instance;
+        }
+
         if (_running) _pending.Add(instance);
         else _objects.Add(instance);
         return instance;
+    }
+
+    /// <summary>Destroys every active and pending object at a frame boundary.</summary>
+    public void Clear()
+    {
+        if (_running)
+            throw new InvalidOperationException("objects cannot be cleared during Step");
+        if (_clearing) return;
+
+        _clearing = true;
+        try
+        {
+            var objects = new List<GameObject>(_objects.Count + _pending.Count);
+            var seen = new HashSet<GameObject>(ReferenceEqualityComparer.Instance);
+            foreach (var instance in _objects)
+            {
+                if (seen.Add(instance)) objects.Add(instance);
+            }
+            foreach (var instance in _pending)
+            {
+                if (seen.Add(instance)) objects.Add(instance);
+            }
+
+            _objects.Clear();
+            _pending.Clear();
+
+            foreach (var instance in objects)
+                instance.Destroy();
+        }
+        finally
+        {
+            _clearing = false;
+        }
     }
 
     public void Step(int pauseLevel = -1)

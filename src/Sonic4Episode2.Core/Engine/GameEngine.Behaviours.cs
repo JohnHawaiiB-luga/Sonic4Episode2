@@ -31,7 +31,7 @@ public sealed partial class GameEngine
     /// <summary>Applies the normal damage transition to the active player.</summary>
     public DamageResult DamagePlayer()
     {
-        if (Player is null)
+        if (Player is null || ActClear)
             return new DamageResult(DamageOutcome.Ignored, RingCount);
 
         DamageResult result = DamageBehaviour.Apply(Player, RingCount);
@@ -39,19 +39,20 @@ public sealed partial class GameEngine
         return result;
     }
 
-    private void MountBehaviours(IReadOnlyList<Placement> placements)
+    private void MountBehaviours(IReadOnlyList<Placement> placements,
+                                 ReadOnlyMemory<byte> actData, string actArchive)
     {
         _needles = new Needles(placements);
         _lands = Sonic4Episode2.Core.Engine.Lands.FromActArchive(
-            _content.Read(ActArchive),
-            ActArchive);
+            actData,
+            actArchive);
         _bumpers = new Bumpers(placements);
         _waterAreas =
             Sonic4Episode2.Core.Engine.WaterAreas.FromActArchive(
-                _content.Read(ActArchive));
+                actData);
         _hariSenbos =
             Sonic4Episode2.Core.Engine.HariSenbos.FromActArchive(
-                _content.Read(ActArchive));
+                actData);
         if (Player is Player player)
         {
             Lands lands = _lands;
@@ -61,7 +62,7 @@ public sealed partial class GameEngine
             player.OnEnter = instance =>
             {
                 previousEnter?.Invoke(instance);
-                if (ReferenceEquals(Player, instance))
+                if (ReferenceEquals(Player, instance) && !player.IsDead)
                     waterAreas.Step(player);
             };
             Action<GameObject>? previousCollision = player.OnCollide;
@@ -69,7 +70,7 @@ public sealed partial class GameEngine
             {
                 previousCollision?.Invoke(instance);
                 if (ReferenceEquals(Player, instance))
-                    lands.Step(Frame, player);
+                    lands.Step(StageFrame, player.IsDead ? null : player);
             };
         }
         Scheduler.Create(
@@ -91,7 +92,7 @@ public sealed partial class GameEngine
 
     private void CheckNeedles()
     {
-        if (Player is not null && _needles?.Check(Player) == true)
+        if (Player is not null && !Player.IsDead && _needles?.Check(Player) == true)
             DamagePlayer();
     }
 
@@ -105,7 +106,7 @@ public sealed partial class GameEngine
     {
         if (_hariSenbos is null)
             return;
-        if (Player is null)
+        if (Player is null || Player.IsDead)
         {
             _hariSenbos.Step();
             return;
