@@ -37,3 +37,6 @@ libfox.so
 /analysis/*.ps1
 /analysis/probe_*.py
 /analysis/sweep_*.py
+/docs/handoffs/
+/docs/orders/
+/docs/RESUME-HERE.md
